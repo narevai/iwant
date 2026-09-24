@@ -36,24 +36,6 @@ def test_resolve_cluster_failure_does_not_claim_missing(monkeypatch, capsys):
     assert "No cluster named" not in capsys.readouterr().out
 
 
-def test_status_filters_by_model_name(monkeypatch, capsys):
-    _fake_sky(
-        monkeypatch,
-        [
-            _row("iwant-step-3.7-flash-v1-aaaaaa"),
-            _row("iwant-step-3.7-flash-v2-bbbbbb"),
-            _row("iwant-step-3.7-flash-optimized-v1-cccccc"),
-            _row("someone-else"),
-        ],
-    )
-    assert sky_wrap.status("step-3.7-flash") == 0
-    out = capsys.readouterr().out
-    assert "iwant-step-3.7-flash-v1-aaaaaa" in out
-    assert "iwant-step-3.7-flash-v2-bbbbbb" in out
-    assert "optimized" not in out
-    assert "someone-else" not in out
-
-
 def test_status_filters_by_exact_cluster_name(monkeypatch, capsys):
     _fake_sky(monkeypatch, [_row("iwant-a-v1-aaaaaa"), _row("iwant-a-v1-bbbbbb")])
     assert sky_wrap.status("iwant-a-v1-bbbbbb") == 0

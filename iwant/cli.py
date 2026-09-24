@@ -146,12 +146,11 @@ def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes
 
 
 @main.command(name="status")
-@click.argument("model", required=False)
-def status_cmd(model):
-    """List iwant clusters (wraps sky.status()); pass MODEL (recipe name or
-    exact cluster name) to filter - shows every matching cluster, since a
-    model can have more than one running at once."""
-    sys.exit(sky_wrap.status(model))
+@click.argument("cluster", required=False)
+def status_cmd(cluster):
+    """List iwant clusters (wraps sky.status()); pass an exact CLUSTER name
+    to show just that one."""
+    sys.exit(sky_wrap.status(cluster))
 
 
 @main.command(name="down")

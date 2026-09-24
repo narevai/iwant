@@ -1,7 +1,6 @@
 import subprocess
 import time
 
-from .registry import is_cluster_of_model
 from .sky_client import resolve
 from .spinner import Spinner
 
@@ -87,18 +86,12 @@ def resolve_cluster(cluster: str, statuses: set[str] | None = None) -> str | Non
     return None
 
 
-def status(name: str | None = None) -> int:
-    """`name` is either an exact cluster name or a recipe name - the latter
-    shows every cluster launched from that model (any recipe version)."""
+def status(cluster: str | None = None) -> int:
     result = _iwant_rows("Checking status...")
     if result is None:
         return 1
-    if name:
-        result = [
-            row
-            for row in result
-            if _field(row, "name") == name or is_cluster_of_model(_field(row, "name"), name)
-        ]
+    if cluster:
+        result = [row for row in result if _field(row, "name") == cluster]
     if not result:
         print("No clusters found.")
         return 0
