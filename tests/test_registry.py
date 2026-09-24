@@ -88,17 +88,3 @@ def test_new_cluster_name_uses_model_and_version_prefix():
 
 def test_new_cluster_name_is_unique_per_call():
     assert registry.new_cluster_name("gpt-oss-20b", 1) != registry.new_cluster_name("gpt-oss-20b", 1)
-
-
-def test_is_cluster_of_model_matches_any_version():
-    assert registry.is_cluster_of_model("iwant-step-3.7-flash-v1-a1b2c3", "step-3.7-flash")
-    assert registry.is_cluster_of_model("iwant-step-3.7-flash-v12-a1b2c3", "step-3.7-flash")
-
-
-def test_is_cluster_of_model_no_prefix_collision():
-    # "step-3.7-flash" must not also claim the "-optimized" variant's clusters
-    assert not registry.is_cluster_of_model("iwant-step-3.7-flash-optimized-v1-a1b2c3", "step-3.7-flash")
-
-
-def test_is_cluster_of_model_roundtrips_new_cluster_name():
-    assert registry.is_cluster_of_model(registry.new_cluster_name("gpt-oss-20b", 2), "gpt-oss-20b")

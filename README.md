@@ -56,7 +56,7 @@ iwant launch MODEL --dry-run      # show the plan, spend nothing
 iwant launch MODEL --yes          # no prompts (scripts/CI)
 iwant launch --hf-token hf_xxx    # gated models (or: HF_TOKEN=hf_xxx iwant launch)
 
-iwant status [MODEL|CLUSTER]      # running instances
+iwant status [CLUSTER]            # running instances
 iwant ssh | endpoint | stop | down [CLUSTER]
 ```
 

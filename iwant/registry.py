@@ -41,10 +41,3 @@ def new_cluster_name(model: str, version: int) -> str:
     cluster/cloud at once (a plain `iwant-<model>` name would collide).
     Carries the recipe version so `iwant status` shows what's running."""
     return f"iwant-{model}-v{version}-{secrets.token_hex(3)}"
-
-
-def is_cluster_of_model(cluster: str, model: str) -> bool:
-    """Whether `cluster` was created by new_cluster_name() for `model` (any
-    version). Exact match on the model segment, so e.g. "step-3.7-flash"
-    doesn't also match "step-3.7-flash-optimized" clusters."""
-    return re.fullmatch(rf"iwant-{re.escape(model)}-v\d+-[0-9a-f]+", cluster) is not None
