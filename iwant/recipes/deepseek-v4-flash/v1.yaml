@@ -1,0 +1,66 @@
+# Confirmed working end-to-end on 2026-09-21 via manual ssh testing on a
+# real 8x H100 instance (a3-highgpu-8g) - see NOTES.md "Confirmed working"
+# section for the exact session and timings (~24 min from launch to ready).
+# H100 isn't on vLLM's own "verified" hardware list for this model (only
+# H200+), but it works - same Hopper architecture, just less VRAM/card.
+
+envs:
+  MODEL_NAME: deepseek-ai/DeepSeek-V4-Flash-0731 # official 0731 release, not the preview
+  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+
+resources:
+  infra: gcp
+  accelerators: H100:8
+  cpus: 16+
+  memory: 64+
+  disk_size: 300 # checkpoint is ~155GB on disk, this leaves comfortable headroom
+  ports:
+    - 8000
+
+setup: |
+  set -euo pipefail
+  boot_dev=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" 2>/dev/null || true)
+  local_devs=$(lsblk -dn -o NAME,TYPE | awk -v b="$boot_dev" '$2=="disk" && $1!=b {print "/dev/"$1}')
+  if [ -n "$local_devs" ]; then
+    sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null
+    n=$(echo "$local_devs" | wc -l)
+    if [ "$n" -gt 1 ]; then
+      sudo mdadm --create /dev/md0 --level=0 --raid-devices="$n" $local_devs --run
+      target=/dev/md0
+    else
+      target=$local_devs
+    fi
+    sudo mkfs.ext4 -F -q "$target"
+    sudo mkdir -p /mnt/localssd
+    sudo mount "$target" /mnt/localssd
+    sudo chown "$(whoami):$(whoami)" /mnt/localssd
+    mkdir -p /mnt/localssd/huggingface
+  fi
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  source "$HOME/.local/bin/env"
+  uv venv "$HOME/vllm-env" --python 3.12
+  source "$HOME/vllm-env/bin/activate"
+  uv pip install -U vllm
+
+run: |
+  set -euo pipefail
+  source "$HOME/vllm-env/bin/activate"
+  [ -d /mnt/localssd/huggingface ] && export HF_HOME=/mnt/localssd/huggingface
+  vllm serve "$MODEL_NAME" \
+      --host 0.0.0.0 \
+      --port 8000 \
+      --api-key "$VLLM_API_KEY" \
+      --trust-remote-code \
+      --gpu-memory-utilization 0.85 \
+      --kv-cache-dtype fp8 \
+      --block-size 256 \
+      --enable-expert-parallel \
+      --tensor-parallel-size 8 \
+      --moe-backend auto \
+      --attention_config.indexer_kv_dtype fp8 \
+      --tokenizer-mode deepseek_v4 \
+      --tool-call-parser deepseek_v4 \
+      --enable-auto-tool-choice \
+      --reasoning-parser deepseek_v4 \
+      --reasoning-config '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}' \
+      --speculative-config '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"probabilistic"}'

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iwant"
+version = "0.1.0"
+description = "CLI over SkyPilot's Python SDK for launching vLLM model servers"
+requires-python = ">=3.10"
+dependencies = [
+  "click>=8.0,<8.2.0",
+  "skypilot[gcp]>=0.13.0",
+  "questionary>=2.0",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+iwant = "iwant.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["iwant"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

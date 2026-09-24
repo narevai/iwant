@@ -1,0 +1,61 @@
+# Ling-3.0-flash (inclusionAI), FP8, 8x H200 TP8+EP8 (recipe's own config is
+# TP2/TP4+EP4 - untested at TP8). Plain pip install, vLLM 0.28.0+ already shipped.
+
+envs:
+  MODEL_NAME: inclusionAI/Ling-3.0-flash-fp8
+  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+
+resources:
+  infra: gcp
+  accelerators: H200:8
+  cpus: 16+
+  memory: 64+
+  disk_size: 150 # just OS/venv - the checkpoint goes on local SSD, see setup:
+  ports:
+    - 8000
+
+setup: |
+  set -euo pipefail
+  boot_dev=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" 2>/dev/null || true)
+  local_devs=$(lsblk -dn -o NAME,TYPE | awk -v b="$boot_dev" '$2=="disk" && $1!=b {print "/dev/"$1}')
+  if [ -n "$local_devs" ]; then
+    sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null
+    n=$(echo "$local_devs" | wc -l)
+    if [ "$n" -gt 1 ]; then
+      sudo mdadm --create /dev/md0 --level=0 --raid-devices="$n" $local_devs --run
+      target=/dev/md0
+    else
+      target=$local_devs
+    fi
+    sudo mkfs.ext4 -F -q "$target"
+    sudo mkdir -p /mnt/localssd
+    sudo mount "$target" /mnt/localssd
+    sudo chown "$(whoami):$(whoami)" /mnt/localssd
+    mkdir -p /mnt/localssd/huggingface
+  fi
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  source "$HOME/.local/bin/env"
+  uv venv "$HOME/vllm-env" --python 3.12
+  source "$HOME/vllm-env/bin/activate"
+  uv pip install -U vllm
+
+run: |
+  set -euo pipefail
+  source "$HOME/vllm-env/bin/activate"
+  [ -d /mnt/localssd/huggingface ] && export HF_HOME=/mnt/localssd/huggingface
+  NCCL_DEBUG=WARN vllm serve "$MODEL_NAME" \
+      --host 0.0.0.0 \
+      --port 8000 \
+      --api-key "$VLLM_API_KEY" \
+      --trust-remote-code \
+      --dtype bfloat16 \
+      --tensor-parallel-size 8 \
+      --enable-expert-parallel \
+      --gpu-memory-utilization 0.9 \
+      --enable-chunked-prefill \
+      --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE"}' \
+      --enable-prefix-caching \
+      --enable-auto-tool-choice \
+      --tool-call-parser ling3 \
+      --reasoning-parser ling3 \
+      --speculative-config '{"method":"mtp","num_speculative_tokens":3}'

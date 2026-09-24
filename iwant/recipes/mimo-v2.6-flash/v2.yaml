@@ -1,0 +1,64 @@
+# v2: same as v1, plus HF_TOKEN passed into the container (v1 dropped it).
+# MiMo-V2.6-Flash-RL (Xiaomi), 8x H200 TP8 (recipe's own config is TP4 -
+# untested at TP8). mxfp4 weights need vllm/vllm-openai:mimo-v26 (no stable
+# vLLM release yet). DFlash spec decoding left out - see NOTES.md.
+
+envs:
+  MODEL_NAME: XiaomiMiMo/MiMo-V2.6-Flash-RL
+  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+
+resources:
+  infra: gcp
+  accelerators: H200:8
+  cpus: 16+
+  memory: 64+
+  disk_size: 150 # just OS/docker image - the checkpoint goes on local SSD, see setup:
+  ports:
+    - 8000
+
+setup: |
+  set -euo pipefail
+  boot_dev=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" 2>/dev/null || true)
+  local_devs=$(lsblk -dn -o NAME,TYPE | awk -v b="$boot_dev" '$2=="disk" && $1!=b {print "/dev/"$1}')
+  if [ -n "$local_devs" ]; then
+    sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null
+    n=$(echo "$local_devs" | wc -l)
+    if [ "$n" -gt 1 ]; then
+      sudo mdadm --create /dev/md0 --level=0 --raid-devices="$n" $local_devs --run
+      target=/dev/md0
+    else
+      target=$local_devs
+    fi
+    sudo mkfs.ext4 -F -q "$target"
+    sudo mkdir -p /mnt/localssd
+    sudo mount "$target" /mnt/localssd
+    sudo chown "$(whoami):$(whoami)" /mnt/localssd
+    mkdir -p /mnt/localssd/huggingface
+  fi
+  sudo docker pull vllm/vllm-openai:mimo-v26
+
+run: |
+  set -euo pipefail
+  hf_cache="$HOME/.cache/huggingface"
+  [ -d /mnt/localssd/huggingface ] && hf_cache=/mnt/localssd/huggingface
+  mkdir -p "$hf_cache"
+  # sudo drops the caller's env, so HF_TOKEN (`iwant launch --hf-token`)
+  # has to be handed to the container explicitly - only when it's set.
+  hf_env=()
+  [ -n "${HF_TOKEN:-}" ] && hf_env=(-e "HF_TOKEN=$HF_TOKEN")
+  sudo docker run --rm --gpus all --network host --ipc host \
+      -v "$hf_cache:/root/.cache/huggingface" \
+      ${hf_env[@]+"${hf_env[@]}"} \
+      vllm/vllm-openai:mimo-v26 \
+      "$MODEL_NAME" \
+      --host 0.0.0.0 \
+      --port 8000 \
+      --api-key "$VLLM_API_KEY" \
+      --trust-remote-code \
+      --max-model-len auto \
+      --generation-config vllm \
+      --tensor-parallel-size 8 \
+      --gpu-memory-utilization 0.95 \
+      --tool-call-parser mimo \
+      --enable-auto-tool-choice \
+      --reasoning-parser mimo

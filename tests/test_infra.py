@@ -1,0 +1,59 @@
+import sys
+from unittest.mock import MagicMock
+
+from iwant import infra
+
+
+def test_setup_hint_known_cloud():
+    assert "gcloud" in infra.setup_hint("gcp")
+
+
+def test_setup_hint_unknown_cloud_falls_back_to_generic():
+    hint = infra.setup_hint("some-future-cloud")
+    assert "some-future-cloud" in hint
+    assert "docs.skypilot.co" in hint
+
+
+def test_compute_clouds_are_lowercase_and_unique():
+    assert len(infra.COMPUTE_CLOUDS) == len(set(infra.COMPUTE_CLOUDS))
+    assert all(c == c.lower() for c in infra.COMPUTE_CLOUDS)
+
+
+def test_fetch_enabled_parses_check_result(monkeypatch):
+    fake_sky = MagicMock()
+    fake_sky.check.check.return_value = {"default": {"gcp": ["compute", "storage"]}}
+    monkeypatch.setitem(sys.modules, "sky", fake_sky)
+    monkeypatch.setattr(infra, "resolve", lambda v: v)
+
+    assert infra._fetch_enabled() == {"gcp"}
+
+
+def test_fetch_enabled_none_on_exception(monkeypatch):
+    fake_sky = MagicMock()
+    fake_sky.check.check.side_effect = RuntimeError("boom")
+    monkeypatch.setitem(sys.modules, "sky", fake_sky)
+
+    assert infra._fetch_enabled() is None
+
+
+def test_fetch_enabled_none_on_unexpected_shape(monkeypatch):
+    fake_sky = MagicMock()
+    fake_sky.check.check.return_value = "not a dict"
+    monkeypatch.setitem(sys.modules, "sky", fake_sky)
+    monkeypatch.setattr(infra, "resolve", lambda v: v)
+
+    assert infra._fetch_enabled() is None
+
+
+def test_check_all_marks_disabled_clouds_false(monkeypatch):
+    monkeypatch.setattr(infra, "_fetch_enabled", lambda: {"gcp"})
+    statuses = infra.check_all()
+    assert statuses["gcp"] is True
+    assert statuses["aws"] is False
+    assert set(statuses) == set(infra.COMPUTE_CLOUDS)
+
+
+def test_enabled_infra_filters_to_compute_clouds_order(monkeypatch):
+    monkeypatch.setattr(infra, "_fetch_enabled", lambda: {"aws", "gcp", "not-a-real-cloud"})
+    result = infra.enabled_infra()
+    assert result == [c for c in infra.COMPUTE_CLOUDS if c in ("aws", "gcp")]

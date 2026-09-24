@@ -1,0 +1,44 @@
+envs:
+  MODEL_NAME: openai/gpt-oss-20b
+  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+
+resources:
+  infra: gcp
+  accelerators: L4:1
+  cpus: 8+
+  memory: 32+
+  disk_size: 200
+  ports:
+    - 8000
+
+setup: |
+  set -euo pipefail
+  boot_dev=$(lsblk -no PKNAME "$(findmnt -no SOURCE /)" 2>/dev/null || true)
+  local_devs=$(lsblk -dn -o NAME,TYPE | awk -v b="$boot_dev" '$2=="disk" && $1!=b {print "/dev/"$1}')
+  if [ -n "$local_devs" ]; then
+    sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null
+    n=$(echo "$local_devs" | wc -l)
+    if [ "$n" -gt 1 ]; then
+      sudo mdadm --create /dev/md0 --level=0 --raid-devices="$n" $local_devs --run
+      target=/dev/md0
+    else
+      target=$local_devs
+    fi
+    sudo mkfs.ext4 -F -q "$target"
+    sudo mkdir -p /mnt/localssd
+    sudo mount "$target" /mnt/localssd
+    sudo chown "$(whoami):$(whoami)" /mnt/localssd
+    mkdir -p /mnt/localssd/huggingface
+  fi
+  pip install -U uv
+  uv pip install --system -U "vllm>=0.10.1"
+
+run: |
+  set -euo pipefail
+  [ -d /mnt/localssd/huggingface ] && export HF_HOME=/mnt/localssd/huggingface
+  python -m vllm.entrypoints.openai.api_server \
+      --model "$MODEL_NAME" \
+      --host 0.0.0.0 \
+      --port 8000 \
+      --api-key "$VLLM_API_KEY" \
+      --max-model-len 8192
