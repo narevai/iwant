@@ -5,7 +5,7 @@
 # Installation script for Linux and macOS.
 #
 # Usage:
-#   curl -fsSL https://narev.ai/iwant/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
 #
 # Or with options:
 #   curl -fsSL ... | bash -s -- --branch dev --skip-setup

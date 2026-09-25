@@ -40,7 +40,21 @@ Idle instances shut down after 30 minutes by default (`--idle-minutes N`, `--no-
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
+```
+
+The installer puts iwant in `~/.iwant` and the `iwant` command in `~/.local/bin`. It sends one anonymous
+install event (OS, CPU arch, success/failure) - opt out with `IWANT_NO_TELEMETRY=1`.
+
+Or from a clone:
+
+```bash
 pip install -e .          # or: uv pip install -e .
+```
+
+Then:
+
+```bash
 gcloud auth login && gcloud auth application-default login
 iwant setup               # which clouds are ready, and how to enable the rest
 ```
