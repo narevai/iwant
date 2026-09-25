@@ -37,9 +37,9 @@ INSTALL_DIR="${IWANT_INSTALL_DIR:-$IWANT_HOME/iwant}"
 COMMAND_LINK_DIR="$HOME/.local/bin"
 PYTHON_VERSION="3.12"
 PYTHON_SUPPORTED_RANGE=">=3.10,<3.14" # pyproject requires-python; keep in sync
-# Umami website id is public (it's in narev.ai's page source too).
+# Umami website id is public by design (Umami ids are never secret).
 UMAMI_URL="https://api-gateway.umami.dev/api/send"
-UMAMI_WEBSITE_ID="3b29e9e9-bc76-4188-b396-c8aaf2c7925b"
+UMAMI_WEBSITE_ID="83080a32-0b95-4e90-b948-90929086b256"
 
 # Options
 RUN_SETUP=true
@@ -116,11 +116,12 @@ send_event() {
         return 0
     fi
     local data="{\"os\":\"${OS:-unknown}\",\"arch\":\"$(uname -m)\",\"status\":\"$1\"}"
-    # Umami drops requests whose User-Agent looks like a bot (curl's does).
+    # Umami drops bot-like User-Agents (curl's included); this format, like
+    # the one @umami/node sends, gets through.
     curl -fsS -m 2 -X POST \
         -H 'Content-Type: application/json' \
-        -H 'User-Agent: Mozilla/5.0 iwant-installer' \
-        --data "{\"type\":\"event\",\"payload\":{\"website\":\"$UMAMI_WEBSITE_ID\",\"hostname\":\"narev.ai\",\"url\":\"/iwant/install\",\"name\":\"iwant_install\",\"data\":$data}}" \
+        -H 'User-Agent: Mozilla/5.0 iwant-installer/1' \
+        --data "{\"type\":\"event\",\"payload\":{\"website\":\"$UMAMI_WEBSITE_ID\",\"hostname\":\"iwant.narev.ai\",\"url\":\"/install\",\"name\":\"iwant_install\",\"data\":$data}}" \
         "$UMAMI_URL" >/dev/null 2>&1 || true
 }
 
