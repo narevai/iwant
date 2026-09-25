@@ -3,39 +3,17 @@ import io
 
 from .spinner import Spinner
 
-# Clouds iwant can launch a GPU instance on. `sky check` also lists
-# storage-only integrations, which are left out.
-COMPUTE_CLOUDS = [
-    "gcp",
-    "aws",
-    "azure",
-    "runpod",
-    "lambda",
-    "kubernetes",
-    "paperspace",
-    "fluidstack",
-    "vast",
-    "oci",
-    "ibm",
-    "cudo",
-]
+# Clouds iwant can launch on - each needs its SkyPilot extra in
+# pyproject.toml (skypilot[gcp]).
+COMPUTE_CLOUDS = ["gcp"]
 
-# Setup commands for clouds with a known login flow; the rest get a link to
-# SkyPilot's docs.
 SETUP_HINTS: dict[str, str] = {
     "gcp": "gcloud auth login && gcloud auth application-default login",
-    "aws": "aws configure   (or: aws sso login --profile <profile>, for SSO-based orgs)",
-    "azure": "az login",
-    "kubernetes": "point kubectl at a cluster with GPU nodes, then confirm with: kubectl get nodes",
 }
-_GENERIC_HINT_TMPL = (
-    'pip install "skypilot[{cloud}]" and follow the {cloud} setup steps at '
-    "https://docs.skypilot.co/en/latest/getting-started/installation.html"
-)
 
 
 def setup_hint(cloud: str) -> str:
-    return SETUP_HINTS.get(cloud, _GENERIC_HINT_TMPL.format(cloud=cloud))
+    return SETUP_HINTS[cloud]
 
 
 def _fetch_enabled() -> set[str] | None:

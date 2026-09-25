@@ -4,7 +4,7 @@ from pathlib import Path
 
 RECIPES_DIR = Path(__file__).resolve().parent / "recipes"
 
-# Recipes live in recipes/<model>/v<N>.yaml; `iwant launch` takes the highest
+# Recipes live in recipes/<model>/v<N>.yaml; `iwant up` takes the highest
 # N. Published versions aren't edited - changes go into v<N+1>.yaml, so
 # <model>@v<N> always means the same config.
 _VERSION_RE = re.compile(r"v(\d+)\.yaml")

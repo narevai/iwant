@@ -87,6 +87,12 @@ def status(cluster: str | None = None) -> int:
         print("No clusters found.")
         return 0
 
+    up = [_field(row, "name") for row in result if _status_value(_field(row, "status")) == "UP"]
+    endpoints = {}
+    if up:
+        with Spinner("Looking up endpoints..."):
+            endpoints = {name: endpoint(name) for name in up}
+
     rows = []
     for row in result:
         cloud = _field(row, "cloud")
@@ -96,18 +102,20 @@ def status(cluster: str | None = None) -> int:
         autostop = "-"
         if autostop_min and autostop_min > 0:
             autostop = f"{autostop_min}m" + (" (down)" if _field(row, "to_down") else "")
+        ep = endpoints.get(_field(row, "name"))
         rows.append(
             (
                 _field(row, "name", "?"),
                 infra,
                 _field(row, "resources_str", "-"),
                 _status_value(_field(row, "status")),
+                f"http://{ep}/v1" if ep else "-",
                 autostop,
                 _relative_time(_field(row, "launched_at")),
             )
         )
 
-    header = ["NAME", "INFRA", "RESOURCES", "STATUS", "AUTOSTOP", "LAUNCHED"]
+    header = ["NAME", "INFRA", "RESOURCES", "STATUS", "ENDPOINT", "AUTOSTOP", "LAUNCHED"]
     table = [header, *rows]
     widths = [max(len(str(r[i])) for r in table) for i in range(len(header))]
     for r in table:
@@ -128,37 +136,18 @@ def down(cluster: str) -> int:
     return 0
 
 
-def stop(cluster: str) -> int:
-    import sky  # lazy: slow to import, see cli._prefetch_sky()
-
-    try:
-        with Spinner(f"Stopping {cluster}..."):
-            sky.get(sky.stop(cluster))
-    except Exception as e:
-        print(f"sky.stop() failed: {e}")
-        return 1
-    print(f"Stopped {cluster}.")
-    return 0
-
-
 def ssh(cluster: str) -> int:
     # SkyPilot adds a Host entry for each cluster to ~/.ssh/config.
     return subprocess.call(["ssh", cluster])
 
 
-def endpoint(cluster: str, quiet: bool = False) -> str | None:
+def endpoint(cluster: str) -> str | None:
+    """The vLLM server's "ip:port", or None if it can't be looked up."""
     import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
-        if quiet:
-            # Silent lookup used by `launch`, no spinner.
-            result = sky.get(sky.endpoints(cluster, port=8000))
-        else:
-            with Spinner("Looking up endpoint..."):
-                result = sky.get(sky.endpoints(cluster, port=8000))
-    except Exception as e:
-        if not quiet:
-            print(f"sky.endpoints() failed: {e}")
+        result = sky.get(sky.endpoints(cluster, port=8000))
+    except Exception:
         return None
     # Expect {port: "ip:port"}; anything else, or another port, isn't the vLLM server.
     if isinstance(result, dict):

@@ -8,7 +8,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
 #
 # Or with options:
-#   curl -fsSL ... | bash -s -- --branch dev --skip-setup
+#   curl -fsSL ... | bash -s -- --branch dev --skip-auth
 #
 # ============================================================================
 
@@ -47,7 +47,7 @@ BRANCH="main"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --skip-setup)
+        --skip-auth)
             RUN_SETUP=false
             shift
             ;;
@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: install.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --skip-setup   Don't run 'iwant setup' after installing"
+            echo "  --skip-auth    Don't run 'iwant auth' after installing"
             echo "  --branch NAME  Git branch to install (default: main)"
             echo "  --dir PATH     Installation directory (default: ~/.iwant/iwant)"
             echo "  -h, --help     Show this help"
@@ -397,22 +397,22 @@ EOF
 
 run_setup() {
     if [ "$RUN_SETUP" = false ]; then
-        log_info "Skipping 'iwant setup' (--skip-setup)"
+        log_info "Skipping 'iwant auth' (--skip-auth)"
         return 0
     fi
 
     # Probe by actually opening /dev/tty - it can exist but fail to open
-    # (Docker builds, CI). `iwant setup` needs it for its picker when this
+    # (Docker builds, CI). `iwant auth` needs it for its picker when this
     # script itself is piped from curl.
     if ! (: </dev/tty) 2>/dev/null; then
-        log_info "No terminal available - run 'iwant setup' after install."
+        log_info "No terminal available - run 'iwant auth' after install."
         return 0
     fi
 
     echo ""
-    log_info "Running 'iwant setup' to check which clouds are ready..."
+    log_info "Running 'iwant auth' to check which clouds are ready..."
     echo ""
-    "$COMMAND_LINK_DIR/iwant" setup </dev/tty || log_warn "'iwant setup' failed - re-run it after install."
+    "$COMMAND_LINK_DIR/iwant" auth </dev/tty || log_warn "'iwant auth' failed - re-run it after install."
 }
 
 print_success() {
@@ -426,10 +426,11 @@ print_success() {
     echo ""
     echo -e "${CYAN}${BOLD}Commands:${NC}"
     echo ""
-    echo -e "   ${GREEN}iwant launch${NC}    Pick a model + cloud and launch it"
-    echo -e "   ${GREEN}iwant status${NC}    What's running"
-    echo -e "   ${GREEN}iwant down${NC}      Tear an instance down"
-    echo -e "   ${GREEN}iwant setup${NC}     Which clouds are ready, and how to enable the rest"
+    echo -e "   ${GREEN}iwant up${NC}      Deploy model"
+    echo -e "   ${GREEN}iwant down${NC}    Tear down a model"
+    echo -e "   ${GREEN}iwant auth${NC}    Login to your cloud provider"
+    echo -e "   ${GREEN}iwant list${NC}    Show deployed models"
+    echo -e "   ${GREEN}iwant ssh${NC}     SSH into a cluster"
     echo ""
 
     if [ "$HAS_GCLOUD" = false ]; then

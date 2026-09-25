@@ -47,3 +47,15 @@ def test_status_filters_by_exact_cluster_name(monkeypatch, capsys):
 def test_status_fails_on_sdk_error(monkeypatch):
     _fake_sky(monkeypatch, error=RuntimeError("boom"))
     assert sky_wrap.status() == 1
+
+
+def test_status_shows_endpoint_for_up_clusters(monkeypatch, capsys):
+    fake_sky = _fake_sky(
+        monkeypatch, [_row("iwant-a-v1-aaaaaa"), _row("iwant-b-v1-bbbbbb", status="STOPPED")]
+    )
+    fake_sky.endpoints.side_effect = lambda cluster, port: {8000: "1.2.3.4:8000"}
+    assert sky_wrap.status() == 0
+    out = capsys.readouterr().out
+    assert "ENDPOINT" in out
+    assert "http://1.2.3.4:8000/v1" in out
+    fake_sky.endpoints.assert_called_once_with("iwant-a-v1-aaaaaa", port=8000)
