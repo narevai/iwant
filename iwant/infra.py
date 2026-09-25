@@ -4,13 +4,11 @@ import io
 from .spinner import Spinner
 
 # Clouds iwant can launch on - each needs its SkyPilot extra in
-# pyproject.toml (skypilot[gcp,aws,kubernetes]).
-COMPUTE_CLOUDS = ["gcp", "aws", "kubernetes"]
+# pyproject.toml (skypilot[gcp]).
+COMPUTE_CLOUDS = ["gcp"]
 
 SETUP_HINTS: dict[str, str] = {
     "gcp": "gcloud auth login && gcloud auth application-default login",
-    "aws": "aws configure   (or: aws sso login --profile <profile>, for SSO-based orgs)",
-    "kubernetes": "point kubectl at a cluster with GPU nodes, then confirm with: kubectl get nodes",
 }
 
 

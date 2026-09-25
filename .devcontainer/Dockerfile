@@ -17,4 +17,4 @@ ENV UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
     UV_HTTP_TIMEOUT=300
 
-RUN uv pip install --system ruff click "skypilot[gcp,aws,kubernetes]"
+RUN uv pip install --system ruff click "skypilot[gcp]"

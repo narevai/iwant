@@ -21,7 +21,7 @@ One command rents a cloud GPU box, starts vLLM on it with a tested recipe, and g
 OpenAI-compatible endpoint.
 
 ```console
-$ iwant launch
+$ iwant up
 ? What do you want to launch? gpt-oss-20b
 Recipe: gpt-oss-20b@v1 (latest)
 ? Where do you want to launch it? GCP
@@ -56,29 +56,31 @@ Then:
 
 ```bash
 gcloud auth login && gcloud auth application-default login
-iwant setup               # which clouds are ready, and how to enable the rest
+iwant auth                # which clouds are ready, and how to log in
 ```
 
-Supported clouds: GCP, AWS and Kubernetes. The bundled recipes are tuned and tested on GCP.
+Supported cloud: GCP.
 
 GPU quota (e.g. `NVIDIA_L4_GPUS`) usually has to be requested in the GCP Console first.
 
 ## Usage
 
 ```bash
-iwant list                        # available models
-iwant launch [MODEL]              # interactive if MODEL is omitted
-iwant launch MODEL --dry-run      # show the plan, spend nothing
-iwant launch MODEL --yes          # no prompts (scripts/CI)
-iwant launch --hf-token hf_xxx    # gated models (or: HF_TOKEN=hf_xxx iwant launch)
+iwant up                      # deploy a model - pick model, cloud and options
+iwant up MODEL --dry-run      # show the plan, spend nothing
+iwant up MODEL --yes          # no prompts (scripts/CI)
+iwant up --hf-token hf_xxx    # gated models (or: HF_TOKEN=hf_xxx iwant up)
+iwant down [CLUSTER]          # tear down a model
 
-iwant status [CLUSTER]            # running instances
-iwant ssh | endpoint | stop | down [CLUSTER]
+iwant auth                    # login status and how to log in
+
+iwant list [CLUSTER]          # deployed models, with their endpoints
+iwant ssh [CLUSTER]           # ssh into a cluster
 ```
 
 ## Recipes
 
-Each model lives in `iwant/recipes/<model>/v<N>.yaml` and `launch` always takes the highest `N`.
+Each model lives in `iwant/recipes/<model>/v<N>.yaml` and `iwant up` always takes the highest `N`.
 Published versions are never edited: any change goes into `v<N+1>.yaml`, so `<model>@v<N>` always
 points at the exact config a benchmark ran against.
 

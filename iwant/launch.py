@@ -85,7 +85,7 @@ def _resolve_model(model: str | None, interactive: bool):
     if model is not None:
         return model
     if not interactive:
-        print("No model given. Pass one, e.g. `iwant launch gpt-oss-20b` (see `iwant list`).")
+        print("No model given. Pass one, e.g. `iwant up gpt-oss-20b`.")
         return _CANCELLED
     models = list_models()
     if not models:
@@ -107,7 +107,7 @@ def _resolve_infra(infra: str | None, interactive: bool):
 
     enabled = infra_mod.enabled_infra()
     if not enabled:
-        print("No cloud is set up to launch on. Run `iwant setup` to see how to enable one.")
+        print("No cloud is set up to launch on. Run `iwant auth` to see how to enable one.")
         return _CANCELLED
 
     picked = tui.pick_infra(enabled)
@@ -273,7 +273,7 @@ def _run_launch(
             print("\nStopped waiting.")
         except Exception as e:
             print(f"Launch failed: {e}")
-            print(f"The cluster may still exist (and bill) - check `iwant status`, `iwant down {cluster}`.")
+            print(f"The cluster may still exist (and bill) - check `iwant list`, `iwant down {cluster}`.")
             return 1
     else:
         print(
@@ -287,10 +287,10 @@ def _run_launch(
             print("\nDetached.")
         except Exception as e:
             print(f"Launch failed: {e}")
-            print(f"The cluster may still exist (and bill) - check `iwant status`, `iwant down {cluster}`.")
+            print(f"The cluster may still exist (and bill) - check `iwant list`, `iwant down {cluster}`.")
             return 1
 
-    ep = sky_wrap.endpoint(cluster, quiet=True)
+    ep = sky_wrap.endpoint(cluster)
     print()
     if ep:
         spinner = Spinner("Waiting for the server to respond...")
@@ -301,7 +301,7 @@ def _run_launch(
         except KeyboardInterrupt:
             print(
                 f"\nStopped waiting after {_format_duration(time.monotonic() - start)} - "
-                f"the job keeps running remotely. Check `iwant ssh {cluster}` or `iwant status`."
+                f"the job keeps running remotely. Check `iwant ssh {cluster}` or `iwant list`."
             )
             return 1
         if healthy:
@@ -323,11 +323,11 @@ def _run_launch(
         print(
             f"Port is up (http://{ep}/v1) but the server isn't responding yet after "
             f"{_format_duration(elapsed)} - it may still be loading the model. "
-            f"Check `iwant ssh {cluster}` or `iwant status`."
+            f"Check `iwant ssh {cluster}` or `iwant list`."
         )
         return 1
 
-    print("Could not confirm the server endpoint yet - check `iwant status`.")
+    print("Could not confirm the server endpoint yet - check `iwant list`.")
     return 1
 
 

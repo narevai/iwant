@@ -7,7 +7,7 @@ from . import infra as infra_mod
 from . import launch as launch_mod
 from . import sky_wrap, tui
 from .cloud_env import ensure_cloud_env
-from .registry import ModelNotFoundError, list_models
+from .registry import ModelNotFoundError
 
 
 def _prefetch_sky() -> None:
@@ -21,7 +21,26 @@ def _prefetch_sky() -> None:
         pass  # imported again, with error handling, where it's used
 
 
-@click.group()
+class _SectionedGroup(click.Group):
+    """Lists commands in a fixed order, in blank-line-separated sections."""
+
+    SECTIONS = (("up", "down"), ("auth",), ("list", "ssh"))
+
+    def list_commands(self, ctx):
+        return [name for section in self.SECTIONS for name in section]
+
+    def format_commands(self, ctx, formatter):
+        width = max(len(name) for name in self.list_commands(ctx))
+        with formatter.section("Commands"):
+            for i, section in enumerate(self.SECTIONS):
+                if i:
+                    formatter.write("\n")
+                formatter.write_dl(
+                    [(name.ljust(width), self.commands[name].get_short_help_str()) for name in section]
+                )
+
+
+@click.group(cls=_SectionedGroup)
 def main():
     """iwant - launch vLLM model servers on cloud GPUs."""
     ensure_cloud_env()
@@ -31,7 +50,7 @@ def main():
 def _pick_running(action: str, statuses: set[str] | None = None) -> str | None:
     if not sys.stdin.isatty():
         click.echo(
-            "No cluster given and not interactive - pass the exact cluster name (see `iwant status`).",
+            "No cluster given and not interactive - pass the exact cluster name (see `iwant list`).",
             err=True,
         )
         return None
@@ -55,18 +74,7 @@ def _resolve_or_pick(cluster: str | None, action: str, statuses: set[str] | None
     return _pick_running(action, statuses)
 
 
-@main.command(name="list")
-def list_cmd():
-    """List models available to launch."""
-    models = list_models()
-    if not models:
-        click.echo("No model configs found under recipes/.")
-        return
-    for name in models:
-        click.echo(name)
-
-
-@main.command(name="launch")
+@main.command(name="up", short_help="Deploy model")
 @click.argument("model", required=False)
 @click.option("--dry-run", is_flag=True, help="Show the launch plan, spend no money.")
 @click.option(
@@ -77,7 +85,7 @@ def list_cmd():
 @click.option(
     "--infra",
     default=None,
-    help="Skip the infra picker, launch on this infra directly (e.g. gcp, aws, kubernetes).",
+    help="Skip the infra picker, launch on this infra directly (e.g. gcp, or gcp/us-central1).",
 )
 @click.option(
     "--spot",
@@ -116,7 +124,7 @@ def list_cmd():
     help="Don't stream setup/boot logs - wait silently and print the final summary.",
 )
 def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes, no_autostop, quiet):
-    """Launch MODEL on a cloud GPU (pick one interactively if omitted) and
+    """Deploy MODEL on a cloud GPU (pick one interactively if omitted) and
     print the server address and API key."""
     try:
         code = launch_mod.launch(
@@ -136,75 +144,19 @@ def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes
     sys.exit(code)
 
 
-@main.command(name="status")
-@click.argument("cluster", required=False)
-def status_cmd(cluster):
-    """List running instances, or just CLUSTER."""
-    sys.exit(sky_wrap.status(cluster))
-
-
-@main.command(name="down")
+@main.command(name="down", short_help="Tear down a model")
 @click.argument("cluster", required=False)
 def down_cmd(cluster):
-    """Tear down CLUSTER (see `iwant status`); pick interactively if omitted."""
+    """Tear down CLUSTER (see `iwant list`); pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "tear down")
     if cluster is None:
         sys.exit(1)
     sys.exit(sky_wrap.down(cluster))
 
 
-@main.command(name="stop")
-@click.argument("cluster", required=False)
-def stop_cmd(cluster):
-    """Stop CLUSTER without deleting it (its disk keeps billing); pick
-    interactively if omitted."""
-    cluster = _resolve_or_pick(cluster, "stop", statuses={"UP"})
-    if cluster is None:
-        sys.exit(1)
-    sys.exit(sky_wrap.stop(cluster))
-
-
-@main.command(name="ssh")
-@click.argument("cluster", required=False)
-def ssh_cmd(cluster):
-    """SSH into CLUSTER; pick interactively if omitted."""
-    cluster = _resolve_or_pick(cluster, "ssh into", statuses={"UP"})
-    if cluster is None:
-        sys.exit(1)
-    sys.exit(sky_wrap.ssh(cluster))
-
-
-@main.command(name="endpoint")
-@click.argument("cluster", required=False)
-def endpoint_cmd(cluster):
-    """Print CLUSTER's server address (IP:port); pick interactively if omitted."""
-    cluster = _resolve_or_pick(cluster, "get the endpoint for", statuses={"UP"})
-    if cluster is None:
-        sys.exit(1)
-    ep = sky_wrap.endpoint(cluster)
-    if ep:
-        click.echo(ep)
-        sys.exit(0)
-    sys.exit(1)
-
-
-@main.command(name="check")
-def check_cmd():
-    """List clouds that are ready to launch on."""
-    enabled = infra_mod.enabled_infra()
-    if not enabled:
-        click.echo(
-            "Could not confirm any enabled infra via the SDK (or none are "
-            "enabled). Check `gcloud auth list` / `gcloud config get project`."
-        )
-        sys.exit(1)
-    for name in enabled:
-        click.echo(f"{name}: enabled")
-
-
-@main.command(name="setup")
-def setup_cmd():
-    """Show which clouds are ready, and how to set up the rest."""
+@main.command(name="auth", short_help="Login to your cloud provider")
+def auth_cmd():
+    """Show which clouds are ready, and how to log in to the rest."""
     statuses = infra_mod.check_all()
 
     if not sys.stdin.isatty():
@@ -223,6 +175,23 @@ def setup_cmd():
     else:
         click.echo(f"{picked}: not set up yet. To enable it, run:")
         click.echo(f"  {infra_mod.setup_hint(picked)}")
+
+
+@main.command(name="list", short_help="Show deployed models")
+@click.argument("cluster", required=False)
+def list_cmd(cluster):
+    """Show deployed models, or just CLUSTER."""
+    sys.exit(sky_wrap.status(cluster))
+
+
+@main.command(name="ssh", short_help="SSH into a cluster")
+@click.argument("cluster", required=False)
+def ssh_cmd(cluster):
+    """SSH into CLUSTER; pick interactively if omitted."""
+    cluster = _resolve_or_pick(cluster, "ssh into", statuses={"UP"})
+    if cluster is None:
+        sys.exit(1)
+    sys.exit(sky_wrap.ssh(cluster))
 
 
 if __name__ == "__main__":

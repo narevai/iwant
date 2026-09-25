@@ -42,14 +42,11 @@ def test_fetch_enabled_none_on_unexpected_shape(monkeypatch):
 
 
 def test_check_all_marks_disabled_clouds_false(monkeypatch):
-    monkeypatch.setattr(infra, "_fetch_enabled", lambda: {"gcp"})
+    monkeypatch.setattr(infra, "_fetch_enabled", lambda: set())
     statuses = infra.check_all()
-    assert statuses["gcp"] is True
-    assert statuses["aws"] is False
-    assert set(statuses) == set(infra.COMPUTE_CLOUDS)
+    assert statuses == {c: False for c in infra.COMPUTE_CLOUDS}
 
 
 def test_enabled_infra_filters_to_compute_clouds_order(monkeypatch):
-    monkeypatch.setattr(infra, "_fetch_enabled", lambda: {"aws", "gcp", "not-a-real-cloud"})
-    result = infra.enabled_infra()
-    assert result == [c for c in infra.COMPUTE_CLOUDS if c in ("aws", "gcp")]
+    monkeypatch.setattr(infra, "_fetch_enabled", lambda: {"gcp", "not-a-real-cloud"})
+    assert infra.enabled_infra() == ["gcp"]
