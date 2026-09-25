@@ -9,7 +9,7 @@ description = "CLI over SkyPilot's Python SDK for launching vLLM model servers"
 requires-python = ">=3.10"
 dependencies = [
   "click>=8.0,<8.2.0",
-  "skypilot[gcp]>=0.13.0",
+  "skypilot[gcp,aws,kubernetes]>=0.13.0",
   "questionary>=2.0",
   "pyyaml>=6.0",
   "requests>=2.31",

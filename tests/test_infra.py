@@ -8,10 +8,8 @@ def test_setup_hint_known_cloud():
     assert "gcloud" in infra.setup_hint("gcp")
 
 
-def test_setup_hint_unknown_cloud_falls_back_to_generic():
-    hint = infra.setup_hint("some-future-cloud")
-    assert "some-future-cloud" in hint
-    assert "docs.skypilot.co" in hint
+def test_every_cloud_has_a_setup_hint():
+    assert set(infra.SETUP_HINTS) == set(infra.COMPUTE_CLOUDS)
 
 
 def test_compute_clouds_are_lowercase_and_unique():

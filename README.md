@@ -59,6 +59,8 @@ gcloud auth login && gcloud auth application-default login
 iwant setup               # which clouds are ready, and how to enable the rest
 ```
 
+Supported clouds: GCP, AWS and Kubernetes. The bundled recipes are tuned and tested on GCP.
+
 GPU quota (e.g. `NVIDIA_L4_GPUS`) usually has to be requested in the GCP Console first.
 
 ## Usage

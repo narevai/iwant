@@ -77,7 +77,7 @@ def list_cmd():
 @click.option(
     "--infra",
     default=None,
-    help="Skip the infra picker, launch on this infra directly (e.g. gcp, aws, runpod).",
+    help="Skip the infra picker, launch on this infra directly (e.g. gcp, aws, kubernetes).",
 )
 @click.option(
     "--spot",
