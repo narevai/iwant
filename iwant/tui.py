@@ -6,9 +6,8 @@ def pick_model(models: list[str], message: str = "What do you want to launch?") 
 
 
 def pick_autostop() -> int | None:
-    """Returns idle-minutes-to-autostop, or None if the user cancelled the
-    prompt (Ctrl+C/Esc) - NOT the same as choosing to disable autostop,
-    which returns -1 (caller maps that to "no autostop")."""
+    """Idle minutes before autostop, -1 to disable it, or None if the user
+    cancelled."""
     choice = questionary.select(
         "Autostop after how long idle?",
         choices=[
@@ -23,14 +22,8 @@ def pick_autostop() -> int | None:
 
 
 def pick_infra(clouds: list[str]) -> str | None:
-    """`clouds` are lowercase cloud keys (e.g. "gcp") that are already known
-    to be enabled - see iwant/infra.py:enabled_infra(). There's no "disabled"
-    option here: the SDK's sky.check() doesn't reliably expose why a cloud
-    is disabled, so there's nothing useful to show for one.
-
-    Always shows the prompt, even with a single choice (no special-casing
-    "only one option" to auto-pick it) - the user still gets to see and
-    confirm what's about to be used, same as every other picker here."""
+    """`clouds` are enabled cloud keys (e.g. "gcp"). Asks even when there's
+    only one, so the user sees where it's about to launch."""
     if not clouds:
         return None
     choices = [questionary.Choice(title=c.upper(), value=c) for c in clouds]
@@ -38,8 +31,7 @@ def pick_infra(clouds: list[str]) -> str | None:
 
 
 def pick_spot() -> bool | None:
-    """Returns True for spot/preemptible, False for on-demand, or None if
-    the user cancelled the prompt."""
+    """True for spot, False for on-demand, None if cancelled."""
     return questionary.select(
         "On-demand or spot?",
         choices=[
@@ -51,9 +43,8 @@ def pick_spot() -> bool | None:
 
 
 def pick_running_instance(instances: list[dict], message: str) -> str | None:
-    """`instances` are {"name": <cluster name>, "infra": ...} from
-    sky_wrap.all_clusters() - infra is shown so the same model running on
-    two different clouds isn't ambiguous in the picker."""
+    """`instances` come from sky_wrap.all_clusters(); infra is shown so the
+    same model on two clouds can be told apart."""
     choices = [
         questionary.Choice(
             title=f"{i['name']}" + (f"  ({i['infra']})" if i["infra"] else ""),
@@ -65,10 +56,7 @@ def pick_running_instance(instances: list[dict], message: str) -> str | None:
 
 
 def pick_setup_target(statuses: dict[str, bool]) -> str | None:
-    """`statuses` maps cloud key -> enabled bool, e.g. from
-    iwant/infra.py:check_all() (unlike pick_infra(), this always shows
-    every curated cloud, disabled ones included - it's for `iwant setup`,
-    where seeing what's *not* set up yet is the whole point)."""
+    """`statuses` maps every cloud to whether it's enabled (infra.check_all())."""
     choices = [
         questionary.Choice(
             title=f"{c.upper():<12} {'enabled' if ok else 'not set up'}",
@@ -80,8 +68,7 @@ def pick_setup_target(statuses: dict[str, bool]) -> str | None:
 
 
 def pick_dry_run() -> bool | None:
-    """Returns True for a dry run, False to launch for real, or None if the
-    user cancelled the prompt."""
+    """True for a dry run, False to launch for real, None if cancelled."""
     return questionary.select(
         "Ready to launch?",
         choices=[

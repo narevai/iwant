@@ -1,19 +1,16 @@
-# Confirmed working end-to-end on 2026-09-21 via manual ssh testing on a
-# real 8x H100 instance (a3-highgpu-8g) - see NOTES.md "Confirmed working"
-# section for the exact session and timings (~24 min from launch to ready).
-# H100 isn't on vLLM's own "verified" hardware list for this model (only
-# H200+), but it works - same Hopper architecture, just less VRAM/card.
+# DeepSeek-V4-Flash, 8x H100 (a3-highgpu-8g), TP8. vLLM only lists H200+
+# as verified for this model, but H100 works. ~24 min from launch to ready.
 
 envs:
-  MODEL_NAME: deepseek-ai/DeepSeek-V4-Flash-0731 # official 0731 release, not the preview
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  MODEL_NAME: deepseek-ai/DeepSeek-V4-Flash-0731
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
 
 resources:
   infra: gcp
   accelerators: H100:8
   cpus: 16+
   memory: 64+
-  disk_size: 300 # checkpoint is ~155GB on disk, this leaves comfortable headroom
+  disk_size: 300 # checkpoint is ~155GB
   ports:
     - 8000
 

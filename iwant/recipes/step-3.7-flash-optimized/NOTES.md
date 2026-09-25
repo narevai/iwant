@@ -24,8 +24,3 @@ more graph memory. On 8x H200 that is the right trade for min cost/token.
 
 If `stepfun37` rejects `--max-cudagraph-capture-size`, same meaning via
 `--compilation-config '{"max_cudagraph_capture_size": 2048}'`.
-
-## Troubleshooting cookbook
-
-Empty so far - fill in only real recipe-vs-reality mismatches that block a
-launch (not operator error, not leftover state from a different recipe).

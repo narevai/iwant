@@ -21,7 +21,7 @@ TP4, it would just waste half the node.
 
 ## Adding DFlash speculative decoding later
 
-Left out of `server.yaml` because its `--speculative-config` needs a concrete
+Left out of the recipe because its `--speculative-config` needs a concrete
 path to the checkpoint's `dflash/` subfolder, which only exists after the
 checkpoint has already been downloaded once - it can't be a static flag on
 first launch. To add it on a second launch of an instance whose local SSD
@@ -31,8 +31,3 @@ DFLASH_DIR=$(ls -d /mnt/localssd/huggingface/hub/models--XiaomiMiMo--MiMo-V2.6-F
 ```
 then splice `$DFLASH_DIR` into `--speculative-config
 '{"method":"dflash","model":"<path>","num_speculative_tokens":7}'` in `run:`.
-
-## Troubleshooting cookbook
-
-Empty so far - fill in only real recipe-vs-reality mismatches that block a
-launch (not operator error, not leftover state from a different recipe).

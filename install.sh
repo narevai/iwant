@@ -345,8 +345,6 @@ setup_path() {
     fi
 
     mkdir -p "$COMMAND_LINK_DIR"
-    # rm first: if this path is an old symlink into the venv, `cat >` would
-    # follow it and overwrite the venv's own entry point.
     rm -f "$COMMAND_LINK_DIR/iwant"
     cat > "$COMMAND_LINK_DIR/iwant" <<EOF
 #!/usr/bin/env bash

@@ -10,9 +10,6 @@ from iwant import launch as launch_mod
 
 
 def test_tail_progress_line_no_job_id_skips_sky_entirely():
-    # No `sky` mocked at all - if this accidentally tried `import sky` (real
-    # package, not installed in the test env), it would raise instead of
-    # returning None.
     assert launch_mod._tail_progress_line("cluster", None) is None
 
 
@@ -125,9 +122,6 @@ def test_resolve_infra_non_interactive_falls_back_to_none():
 
 
 def test_resolve_infra_no_enabled_cancels(monkeypatch):
-    # Deliberately not a silent fallback to the task yaml's own infra: a
-    # launch we can't confirm is set up should stop here, not fail later at
-    # sky.launch() after already asking about autostop/dry-run.
     monkeypatch.setattr(launch_mod.infra_mod, "enabled_infra", lambda: [])
     assert launch_mod._resolve_infra(None, True) is launch_mod._CANCELLED
 
@@ -255,7 +249,7 @@ def _fake_job_status(monkeypatch, value):
     status.value = value
     fake_sky.job_status.return_value = {1: status}
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    monkeypatch.setattr(launch_mod, "resolve", lambda v: v)
+    fake_sky.get.side_effect = lambda v: v
     return fake_sky
 
 

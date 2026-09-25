@@ -1,6 +1,6 @@
 envs:
   MODEL_NAME: openai/gpt-oss-20b
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
 
 resources:
   infra: gcp

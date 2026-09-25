@@ -20,8 +20,3 @@ single TP4 replica would leave 4 of the 8 paid-for GPUs sitting idle, so
 this recipe scales that one replica up to TP8 across the whole node instead.
 **Untested at TP8 specifically** - don't "fix" this back to TP4, it would
 just waste half the node.
-
-## Troubleshooting cookbook
-
-Empty so far - fill in only real recipe-vs-reality mismatches that block a
-launch (not operator error, not leftover state from a different recipe).

@@ -8,7 +8,7 @@
 
 envs:
   MODEL_NAME: stepfun-ai/Step-3.7-Flash
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
 
 resources:
   infra: gcp
