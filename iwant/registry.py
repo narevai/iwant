@@ -4,10 +4,9 @@ from pathlib import Path
 
 RECIPES_DIR = Path(__file__).resolve().parent / "recipes"
 
-# Each recipe is recipes/<model>/v<N>.yaml. A published version is never
-# edited - any config change goes into a new v<N+1>.yaml, so a benchmark
-# tagged <model>@v<N> always points at the exact config it ran against.
-# `iwant launch` always takes the highest N (latest).
+# Recipes live in recipes/<model>/v<N>.yaml; `iwant launch` takes the highest
+# N. Published versions aren't edited - changes go into v<N+1>.yaml, so
+# <model>@v<N> always means the same config.
 _VERSION_RE = re.compile(r"v(\d+)\.yaml")
 
 
@@ -37,7 +36,5 @@ def resolve_task_yaml(model: str) -> tuple[Path, int]:
 
 
 def new_cluster_name(model: str, version: int) -> str:
-    """Unique name per launch - lets the same model run on more than one
-    cluster/cloud at once (a plain `iwant-<model>` name would collide).
-    Carries the recipe version so `iwant status` shows what's running."""
+    """Unique per launch, so the same model can run on several clusters at once."""
     return f"iwant-{model}-v{version}-{secrets.token_hex(3)}"

@@ -1,6 +1,4 @@
-"""Minimal, dependency-free terminal spinner - so `iwant status`/`down`/
-`stop`/etc don't just sit there silently while waiting on a blocking SDK
-call with no idea whether anything is happening."""
+"""Minimal terminal spinner, shown while waiting on a blocking SDK call."""
 
 import itertools
 import sys
@@ -16,13 +14,8 @@ class Spinner:
         self.message = message
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        # Captured once, up front, instead of looking up sys.stdout fresh on
-        # every frame: some SkyPilot SDK calls (e.g. sky.check.check(), see
-        # infra.py) print their own noisy raw output straight to stdout, and
-        # callers may want to swallow that by temporarily reassigning
-        # sys.stdout for the duration of the call. Writing to this captured
-        # reference means the spinner itself keeps showing on the real
-        # terminal either way, instead of also getting silenced.
+        # Keep the real stdout: callers may redirect sys.stdout to hide SDK
+        # output (see infra.py), and the spinner should still show.
         self._out = sys.stdout
 
     def _spin(self) -> None:
@@ -40,8 +33,7 @@ class Spinner:
             self._thread = threading.Thread(target=self._spin, daemon=True)
             self._thread.start()
         else:
-            # Non-interactive (piped/redirected/CI) - an animated spinner
-            # would just spam the log with \r characters, print once instead.
+            # Not a terminal (piped, CI): print once instead of animating.
             print(self.message, file=self._out)
         return self
 

@@ -3,7 +3,7 @@
 
 envs:
   MODEL_NAME: inclusionAI/Ling-3.0-flash-fp8
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
 
 resources:
   infra: gcp

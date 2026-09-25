@@ -15,7 +15,7 @@ def _fake_sky(monkeypatch, rows=None, error=None):
     else:
         fake_sky.status.return_value = rows
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    monkeypatch.setattr(sky_wrap, "resolve", lambda v: v)
+    fake_sky.get.side_effect = lambda v: v
     return fake_sky
 
 

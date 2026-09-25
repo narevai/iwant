@@ -3,7 +3,7 @@
 
 envs:
   MODEL_NAME: deepseek-ai/DeepSeek-V4.1-Flash
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
   VLLM_ENGINE_READY_TIMEOUT_S: "3600" # first load downloads a ~511GB checkpoint
 
 resources:

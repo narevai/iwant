@@ -5,7 +5,7 @@
 
 envs:
   MODEL_NAME: XiaomiMiMo/MiMo-V2.6-Flash-RL
-  VLLM_API_KEY: changeme-placeholder # overridden by `iwant launch` (--env/--api-key) at launch time
+  VLLM_API_KEY: changeme-placeholder # replaced by `iwant launch`
 
 resources:
   infra: gcp

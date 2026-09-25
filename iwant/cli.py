@@ -11,27 +11,19 @@ from .registry import ModelNotFoundError, list_models
 
 
 def _prefetch_sky() -> None:
-    """`sky`'s own import graph is large (multi-second on a cold cache) and
-    is now imported lazily, only inside the functions that actually call
-    it (see sky_client.resolve()'s comment) - so commands/prompts that
-    don't need it (e.g. the model picker) aren't held up by it.
-
-    This kicks that import off in the background as early as possible
-    instead: Python's import system is thread-safe, so whichever function
-    later does its own `import sky` either gets the already-finished
-    module for free, or transparently waits for this thread if it hasn't
-    finished yet - never worse than not prefetching, and usually the whole
-    cost ends up hidden behind however long the user spends answering the
-    interactive pickers."""
+    """Start importing `sky` in the background. It takes a few seconds, so
+    modules import it lazily, inside the functions that use it; this hides
+    most of that cost behind the interactive pickers. A later `import sky`
+    elsewhere just waits for this one to finish."""
     try:
         import sky  # noqa: F401
     except Exception:
-        pass  # the real import (with real error handling) happens again where it's actually needed
+        pass  # imported again, with error handling, where it's used
 
 
 @click.group()
 def main():
-    """iwant - launch vLLM model servers on the cloud via the SkyPilot Python SDK."""
+    """iwant - launch vLLM model servers on cloud GPUs."""
     ensure_cloud_env()
     threading.Thread(target=_prefetch_sky, daemon=True).start()
 
@@ -55,9 +47,9 @@ def _pick_running(action: str, statuses: set[str] | None = None) -> str | None:
 
 
 def _resolve_or_pick(cluster: str | None, action: str, statuses: set[str] | None = None) -> str | None:
-    """CLUSTER must be an exact cluster name - see sky_wrap.resolve_cluster().
-    `statuses` restricts what the picker offers when CLUSTER is omitted -
-    e.g. a STOPPED cluster can't be ssh'd into, but can still be torn down."""
+    """The exact cluster name given, or one picked interactively if omitted.
+    `statuses` limits what the picker offers (e.g. a STOPPED cluster can't
+    be ssh'd into, but can still be torn down)."""
     if cluster:
         return sky_wrap.resolve_cluster(cluster, statuses=statuses)
     return _pick_running(action, statuses)
@@ -65,7 +57,7 @@ def _resolve_or_pick(cluster: str | None, action: str, statuses: set[str] | None
 
 @main.command(name="list")
 def list_cmd():
-    """List available model configs (recipes/<model>/v<N>.yaml)."""
+    """List models available to launch."""
     models = list_models()
     if not models:
         click.echo("No model configs found under recipes/.")
@@ -124,9 +116,8 @@ def list_cmd():
     help="Don't stream setup/boot logs - wait silently and print the final summary.",
 )
 def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes, no_autostop, quiet):
-    """Launch MODEL (or pick one interactively if omitted): provisions the GPU
-    instance via the SkyPilot SDK, installs and starts vLLM, prints the
-    server address and API key."""
+    """Launch MODEL on a cloud GPU (pick one interactively if omitted) and
+    print the server address and API key."""
     try:
         code = launch_mod.launch(
             model,
@@ -148,16 +139,14 @@ def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes
 @main.command(name="status")
 @click.argument("cluster", required=False)
 def status_cmd(cluster):
-    """List iwant clusters (wraps sky.status()); pass an exact CLUSTER name
-    to show just that one."""
+    """List running instances, or just CLUSTER."""
     sys.exit(sky_wrap.status(cluster))
 
 
 @main.command(name="down")
 @click.argument("cluster", required=False)
 def down_cmd(cluster):
-    """Tear down a cluster (wraps sky.down()). CLUSTER is an exact cluster
-    name (see `iwant status`); pick interactively if omitted."""
+    """Tear down CLUSTER (see `iwant status`); pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "tear down")
     if cluster is None:
         sys.exit(1)
@@ -167,8 +156,8 @@ def down_cmd(cluster):
 @main.command(name="stop")
 @click.argument("cluster", required=False)
 def stop_cmd(cluster):
-    """Stop a cluster without deleting it (wraps sky.stop()). CLUSTER is an
-    exact cluster name; pick interactively if omitted."""
+    """Stop CLUSTER without deleting it (its disk keeps billing); pick
+    interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "stop", statuses={"UP"})
     if cluster is None:
         sys.exit(1)
@@ -178,8 +167,7 @@ def stop_cmd(cluster):
 @main.command(name="ssh")
 @click.argument("cluster", required=False)
 def ssh_cmd(cluster):
-    """SSH into a running cluster. CLUSTER is an exact cluster name; pick
-    interactively if omitted."""
+    """SSH into CLUSTER; pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "ssh into", statuses={"UP"})
     if cluster is None:
         sys.exit(1)
@@ -189,8 +177,7 @@ def ssh_cmd(cluster):
 @main.command(name="endpoint")
 @click.argument("cluster", required=False)
 def endpoint_cmd(cluster):
-    """Print a cluster's server address (IP:port). CLUSTER is an exact
-    cluster name; pick interactively if omitted."""
+    """Print CLUSTER's server address (IP:port); pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "get the endpoint for", statuses={"UP"})
     if cluster is None:
         sys.exit(1)
@@ -203,7 +190,7 @@ def endpoint_cmd(cluster):
 
 @main.command(name="check")
 def check_cmd():
-    """List which curated clouds the SDK reports as enabled (best-effort)."""
+    """List clouds that are ready to launch on."""
     enabled = infra_mod.enabled_infra()
     if not enabled:
         click.echo(
@@ -217,8 +204,7 @@ def check_cmd():
 
 @main.command(name="setup")
 def setup_cmd():
-    """Check status of every curated cloud SkyPilot could launch on, and how
-    to set up one that isn't ready yet."""
+    """Show which clouds are ready, and how to set up the rest."""
     statuses = infra_mod.check_all()
 
     if not sys.stdin.isatty():

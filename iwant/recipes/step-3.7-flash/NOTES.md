@@ -11,9 +11,4 @@ file [`models/stepfun-ai/Step-3.7-Flash.yaml`](https://github.com/vllm-project/r
 - `min_vllm_version` hasn't shipped a stable release yet - needs the
   dedicated `vllm/vllm-openai:stepfun37` image (pinned, not `:nightly`).
 - Use `step3p7-flash` as the model name in requests (`--served-model-name`
-  in `server.yaml`), not the full `stepfun-ai/Step-3.7-Flash` HF id.
-
-## Troubleshooting cookbook
-
-Empty so far - fill in only real recipe-vs-reality mismatches that block a
-launch (not operator error, not leftover state from a different recipe).
+  in the recipe), not the full `stepfun-ai/Step-3.7-Flash` HF id.

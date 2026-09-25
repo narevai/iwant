@@ -11,36 +11,25 @@ import yaml
 from . import infra as infra_mod
 from . import sky_wrap, tui
 from .registry import list_models, new_cluster_name, resolve_task_yaml
-from .sky_client import resolve
 from .spinner import Spinner
 
 if TYPE_CHECKING:
-    # Only for the type hint below - never imported at runtime, see the
-    # lazy-import comment in sky_client.resolve().
+    # Type hints only - `sky` is imported lazily at runtime.
     import sky
 
 DEFAULT_IDLE_MINUTES = 30
 
-# vLLM's HTTP server doesn't bind its port until model load + CUDA graph
-# capture + kernel warmup are *all* done - confirmed on a real DeepSeek-V4-Flash
-# launch (8x H100), nothing listening at all until the very last second. Two
-# limits, deliberately different in kind: HEALTH_CHECK_TIMEOUT is
-# *resettable* - it counts time since the remote job's log last changed (see
-# _tail_progress_line()), not total elapsed time, so a launch that's still
-# visibly progressing (just slowly) never times out on this one alone. The
-# checkpoint download itself is a silent ~12+ minute gap in that log (HF's
-# downloader doesn't print progress there) - 30 min clears that with real
-# margin; don't drop this much below ~20 minutes. HEALTH_CHECK_GLOBAL_TIMEOUT
-# is a flat ceiling on top - total wall-clock time regardless of progress,
-# the actual backstop against something that keeps logging forever without
-# ever really finishing.
+# vLLM only opens its port once the model is loaded and warmed up, which can
+# take a long time. HEALTH_CHECK_TIMEOUT counts from the last new line in the
+# remote job log, so a slow but progressing launch doesn't time out. Keep it
+# well above ~20 minutes: a large checkpoint download prints nothing for a
+# long time. HEALTH_CHECK_GLOBAL_TIMEOUT caps the total wait regardless.
 HEALTH_CHECK_TIMEOUT = 1800
 HEALTH_CHECK_GLOBAL_TIMEOUT = 3600
 HEALTH_CHECK_INTERVAL = 5
 
-# Distinct from any real return value (idle_minutes/model/infra can all
-# legitimately be None) - marks "the user backed out of an interactive
-# picker", so callers can tell that apart from "nothing to pick/no override".
+# Returned when the user backs out of a picker - distinct from None, which
+# is a valid value for several of the settings.
 _CANCELLED = object()
 
 
@@ -52,10 +41,8 @@ def _materialize_task_yaml(
     hf_token: str | None = None,
     recipe: str | None = None,
 ) -> str:
-    """sky.Task's mutator API for overriding envs/resources on an
-    already-loaded Task isn't reliably documented across versions - instead
-    of guessing method names, patch the yaml dict directly and load a fresh
-    Task from that (a plain, well-understood operation)."""
+    """Path to the recipe with CLI overrides applied: a temp copy if there
+    is anything to override (the caller deletes it), else the recipe itself."""
     if infra is None and api_key is None and not use_spot and hf_token is None and recipe is None:
         return str(source_path)
     with open(source_path) as f:
@@ -94,8 +81,7 @@ def _resolve_autostop(idle_minutes: int | None, autostop_given: bool, interactiv
 
 
 def _resolve_model(model: str | None, interactive: bool):
-    """Returns the model name, or _CANCELLED if nothing usable could be
-    resolved (each case below prints its own reason before returning)."""
+    """The model name, or _CANCELLED (after printing why)."""
     if model is not None:
         return model
     if not interactive:
@@ -113,22 +99,15 @@ def _resolve_model(model: str | None, interactive: bool):
 
 
 def _resolve_infra(infra: str | None, interactive: bool):
-    """Returns the chosen infra key, or _CANCELLED if the user backed out of
-    an active picker, or if the SDK couldn't confirm any infra enabled at
-    all - launching against an infra we can't even confirm is set up just
-    fails later (at sky.launch(), after already asking about autostop/
-    dry-run), so stop here instead of silently falling back to the task
-    yaml's own default `infra:`."""
+    """The chosen infra, or _CANCELLED if the user backed out or no cloud is
+    enabled - better to stop here than fail at sky.launch() after all the
+    other prompts."""
     if infra is not None or not interactive:
         return infra
 
     enabled = infra_mod.enabled_infra()
     if not enabled:
-        print(
-            "No cloud infra confirmed enabled via the SDK - can't launch "
-            "without one.\nRun `iwant setup` to check status and see how "
-            "to enable a specific cloud."
-        )
+        print("No cloud is set up to launch on. Run `iwant setup` to see how to enable one.")
         return _CANCELLED
 
     picked = tui.pick_infra(enabled)
@@ -139,9 +118,8 @@ def _resolve_infra(infra: str | None, interactive: bool):
 
 
 def _resolve_spot(use_spot: bool, interactive: bool):
-    """Returns the final use_spot bool, or _CANCELLED if the user backed out
-    of the picker. Same pattern as _resolve_dry_run: an explicit --spot on
-    the CLI always wins outright, only ask when nothing already decided it."""
+    """use_spot, asking only if --spot wasn't given; _CANCELLED if the user
+    backed out."""
     if use_spot or not interactive:
         return use_spot
     picked = tui.pick_spot()
@@ -152,10 +130,8 @@ def _resolve_spot(use_spot: bool, interactive: bool):
 
 
 def _resolve_dry_run(dry_run: bool, interactive: bool):
-    """Returns the final dry_run bool, or _CANCELLED if the user backed out
-    of the picker. An explicit `--dry-run` on the CLI always wins outright
-    (same pattern as every other resolver here) - only ask when nothing
-    already decided it."""
+    """dry_run, asking only if --dry-run wasn't given; _CANCELLED if the user
+    backed out."""
     if dry_run or not interactive:
         return dry_run
     picked = tui.pick_dry_run()
@@ -171,25 +147,18 @@ def _format_duration(seconds: float) -> str:
 
 
 def _tail_progress_line(cluster: str, job_id) -> str | None:
-    """Best-effort: the most recent non-empty line of the launch job's
-    remote log, via sky.tail_logs(follow=False) - a real progress signal
-    (model loading, CUDA graph capture, kernel warmup) for the long stretch
-    where the HTTP health check can't see anything yet. Returns None (and
-    the caller falls back to a generic message) if there's no job_id yet or
-    the log fetch fails for any reason - this is a nice-to-have, never
-    something that should block/fail the health check itself."""
+    """Last non-empty line of the launch job's log, shown as progress while
+    the server isn't up yet. None if there's no job or the fetch fails."""
     if job_id is None:
         return None
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         chunks = sky.tail_logs(cluster, job_id, follow=False, tail=5, preload_content=False)
         text = "".join(c for c in chunks if c)
     except Exception:
         return None
-    # Job logs include progress bars written with \r (carriage returns),
-    # e.g. "Capturing CUDA graphs: 2%|...4%|...8%|..." concatenated on one
-    # line - split on both \r and \n and keep only the last real segment.
+    # Progress bars redraw with \r, so split on it too and keep the last segment.
     segments = [seg.strip() for seg in text.replace("\r", "\n").split("\n") if seg.strip()]
     if not segments:
         return None
@@ -197,24 +166,20 @@ def _tail_progress_line(cluster: str, job_id) -> str | None:
     return last if len(last) <= 100 else last[:97] + "..."
 
 
-# SkyPilot's JobStatus values that mean the job is still going (see
-# sky/skylet/job_lib.py: JobStatus.nonterminal_statuses()). Compared by
-# string value so this doesn't need to import sky's internals.
+# SkyPilot job statuses that mean the job is still going.
 _JOB_NONTERMINAL = {"INIT", "PENDING", "SETTING_UP", "RUNNING"}
 
 
 def _job_terminal_status(cluster: str, job_id) -> str | None:
-    """Best-effort: the launch job's status if it has already ended (e.g.
-    "FAILED", "FAILED_SETUP") - a vLLM server is meant to run forever, so
-    *any* terminal status here means it's never going to answer the health
-    check. None if still running, unknown, or the lookup fails - never a
-    reason on its own to stop waiting."""
+    """The launch job's status if it has ended (e.g. "FAILED"). The server
+    is meant to run forever, so any final status means it won't come up.
+    None if it's still running or the lookup fails."""
     if job_id is None:
         return None
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
-        statuses = resolve(sky.job_status(cluster, job_ids=[job_id]))
+        statuses = sky.get(sky.job_status(cluster, job_ids=[job_id]))
     except Exception:
         return None
     if not isinstance(statuses, dict):
@@ -229,20 +194,12 @@ def _job_terminal_status(cluster: str, job_id) -> str | None:
 def _wait_until_healthy(
     ep: str, key: str | None, spinner: Spinner, cluster: str, job_id
 ) -> tuple[bool, float, str | None]:
-    """Polls GET /v1/models until vLLM responds, or gives up - either
-    HEALTH_CHECK_TIMEOUT passes with no new remote log output, or
-    HEALTH_CHECK_GLOBAL_TIMEOUT passes regardless (see the constants'
-    comments above). sky.endpoints() only confirms the port is reachable,
-    not that vLLM is actually serving (confirmed live: vLLM's HTTP server
-    doesn't bind its port until model load + CUDA graph capture + kernel
-    warmup are *all* done, so there's nothing to poll there for most of the
-    wait). Tails the remote job log for a real progress line (see
-    _tail_progress_line()), shown in `spinner`'s message instead of a
-    static counter.
+    """Polls GET /v1/models until vLLM responds, the job ends, or a timeout
+    hits (see HEALTH_CHECK_TIMEOUT). Shows the latest job log line in the
+    spinner meanwhile.
 
-    Returns (healthy, elapsed, job_status) - job_status is set only when
-    the launch job already ended (see _job_terminal_status()), so a crashed
-    vLLM fails fast instead of burning GPU time until the timeout."""
+    Returns (healthy, elapsed, job_status); job_status is set only if the
+    job ended, so a crashed server fails fast instead of waiting it out."""
     url = f"http://{ep}/v1/models"
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     start = time.monotonic()
@@ -282,9 +239,8 @@ def _run_launch(
     use_spot: bool,
     recipe: str,
 ) -> int:
-    """Everything from submitting the launch request to reporting the
-    outcome - the part of `launch()` that actually talks to SkyPilot."""
-    import sky  # lazy - see sky_client.resolve()'s comment
+    """Submits the launch, waits for the server and prints the result."""
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         with Spinner("Submitting launch request..."):
@@ -301,7 +257,7 @@ def _run_launch(
 
     if dry_run:
         try:
-            print("Dry run plan:", resolve(request_id))
+            print("Dry run plan:", sky.get(request_id))
         except Exception as e:
             print(f"Could not resolve the dry-run plan: {e}")
             return 1
@@ -418,14 +374,12 @@ def launch(
     task_path = _materialize_task_yaml(
         task_yaml, infra=chosen_infra, api_key=key, use_spot=use_spot, hf_token=hf_token, recipe=recipe
     )
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         task = sky.Task.from_yaml(task_path)
     finally:
-        # _materialize_task_yaml only creates a real temp file (possibly
-        # containing the plaintext API key) when there's something to
-        # override - don't delete the original recipe yaml.
+        # Delete the temp copy (it holds the API key), never the recipe itself.
         if task_path != str(task_yaml):
             os.unlink(task_path)
 

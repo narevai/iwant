@@ -1,14 +1,11 @@
 import subprocess
 import time
 
-from .sky_client import resolve
 from .spinner import Spinner
 
 
 def _field(row, name, default=None):
-    """sky.status() rows are Pydantic-model-like objects, not dicts -
-    confirmed via a real `iwant status` dump. Try both so this doesn't
-    silently break if a future SkyPilot version switches representations."""
+    """Reads a field from a sky.status() row, whether it's an object or a dict."""
     if isinstance(row, dict):
         return row.get(name, default)
     return getattr(row, name, default)
@@ -34,16 +31,14 @@ def _relative_time(ts) -> str:
 
 
 def _iwant_rows(spinner_message: str) -> list | None:
-    """Every iwant-managed sky.status() row, or None if the call itself
-    failed (error already printed) - distinct from an empty list, which
-    means the call worked and there's legitimately nothing running. Callers
-    must not report "no such cluster" on None: the cluster may well exist
-    (and be billing) while the API server is just unreachable."""
-    import sky  # lazy - see sky_client.resolve()'s comment
+    """sky.status() rows for iwant clusters, or None if the call failed
+    (error already printed). On None, don't claim a cluster is missing - it
+    may exist while the API server is unreachable."""
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         with Spinner(spinner_message):
-            rows = resolve(sky.status())
+            rows = sky.get(sky.status())
     except Exception as e:
         print(f"sky.status() failed: {e}")
         return None
@@ -51,10 +46,8 @@ def _iwant_rows(spinner_message: str) -> list | None:
 
 
 def all_clusters() -> list[dict] | None:
-    """Every iwant-managed cluster ({"name", "infra", "status"}), from one
-    sky.status() call - infra is its own resources_str, no extra request.
-    Includes every status; callers filter by what's usable for their action.
-    None if sky.status() failed - see _iwant_rows()."""
+    """Every iwant cluster as {"name", "infra", "status"}, in any status;
+    None if sky.status() failed."""
     rows = _iwant_rows("Checking clusters...")
     if rows is None:
         return None
@@ -69,10 +62,8 @@ def all_clusters() -> list[dict] | None:
 
 
 def resolve_cluster(cluster: str, statuses: set[str] | None = None) -> str | None:
-    """`cluster` must be an exact cluster name - no resolving by model name;
-    that ambiguity (a model can have more than one concurrent cluster) is
-    what the interactive picker is for, shown when the CLI argument is
-    omitted entirely (see cli.py:_pick_running), not guessed here."""
+    """`cluster` if an iwant cluster with that exact name exists, else None
+    (after listing the available ones)."""
     clusters = all_clusters()
     if clusters is None:
         return None
@@ -125,11 +116,11 @@ def status(cluster: str | None = None) -> int:
 
 
 def down(cluster: str) -> int:
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         with Spinner(f"Tearing down {cluster}..."):
-            resolve(sky.down(cluster))
+            sky.get(sky.down(cluster))
     except Exception as e:
         print(f"sky.down() failed: {e}")
         return 1
@@ -138,11 +129,11 @@ def down(cluster: str) -> int:
 
 
 def stop(cluster: str) -> int:
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         with Spinner(f"Stopping {cluster}..."):
-            resolve(sky.stop(cluster))
+            sky.get(sky.stop(cluster))
     except Exception as e:
         print(f"sky.stop() failed: {e}")
         return 1
@@ -151,33 +142,25 @@ def stop(cluster: str) -> int:
 
 
 def ssh(cluster: str) -> int:
-    # SkyPilot writes a Host entry named after the cluster to ~/.ssh/config
-    # on a successful launch - no SDK equivalent needed, plain ssh works.
+    # SkyPilot adds a Host entry for each cluster to ~/.ssh/config.
     return subprocess.call(["ssh", cluster])
 
 
 def endpoint(cluster: str, quiet: bool = False) -> str | None:
-    import sky  # lazy - see sky_client.resolve()'s comment
+    import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
         if quiet:
-            # Used for silent probing (launch.py checks post-launch state) -
-            # a spinner here would just flicker uselessly.
-            result = resolve(sky.endpoints(cluster, port=8000))
+            # Silent lookup used by `launch`, no spinner.
+            result = sky.get(sky.endpoints(cluster, port=8000))
         else:
             with Spinner("Looking up endpoint..."):
-                result = resolve(sky.endpoints(cluster, port=8000))
+                result = sky.get(sky.endpoints(cluster, port=8000))
     except Exception as e:
         if not quiet:
             print(f"sky.endpoints() failed: {e}")
         return None
-    # sky.endpoints() is documented to resolve to Dict[int, str] - don't
-    # accept a bare string here. A resolved request_id string used to slip
-    # through this check when resolve() swallowed sky.get() failures, which
-    # made a *failed* launch print a request_id as if it were the server URL.
-    # Also don't fall back to some *other* port if 8000 isn't there - we
-    # asked for port=8000 explicitly, so a different port isn't the vLLM
-    # server, it'd just be misleadingly printed as if it were.
+    # Expect {port: "ip:port"}; anything else, or another port, isn't the vLLM server.
     if isinstance(result, dict):
         return result.get(8000)
     return None

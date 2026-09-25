@@ -19,12 +19,8 @@ leave 6 or 4 of the 8 paid-for GPUs sitting idle, so this recipe uses TP8+EP8
 across the whole node instead. **Untested at TP8 specifically** - don't
 "fix" this back to TP2/TP4, it would just waste most of the node.
 
-## Troubleshooting cookbook
 
-Empty so far - fill in only real recipe-vs-reality mismatches that block a
-launch (not operator error, not leftover state from a different recipe).
-
-## Confirmed working
+## Verified
 
 8x H200, TP8+EP8, FP8. `system_fingerprint` containing `-tp8-ep-` confirms
 the configuration. `curl .../v1/chat/completions` with `"model":

@@ -23,7 +23,6 @@ def test_fetch_enabled_parses_check_result(monkeypatch):
     fake_sky = MagicMock()
     fake_sky.check.check.return_value = {"default": {"gcp": ["compute", "storage"]}}
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    monkeypatch.setattr(infra, "resolve", lambda v: v)
 
     assert infra._fetch_enabled() == {"gcp"}
 
@@ -40,7 +39,6 @@ def test_fetch_enabled_none_on_unexpected_shape(monkeypatch):
     fake_sky = MagicMock()
     fake_sky.check.check.return_value = "not a dict"
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    monkeypatch.setattr(infra, "resolve", lambda v: v)
 
     assert infra._fetch_enabled() is None
 
