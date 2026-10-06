@@ -37,6 +37,11 @@ Recipe:  gpt-oss-20b@v1
 
 Idle instances shut down after 30 minutes by default (`--idle-minutes N`, `--no-autostop`).
 
+![Interactive model launch](demo/functionality/up.gif)
+
+[Watch the demos](demo/README.md): six CLI workflows and seven interactive model launches, as square
+GIFs and MP4s.
+
 ## Install
 
 ```bash
@@ -91,4 +96,5 @@ pip install -e ".[dev]"
 pytest && ruff check . && ruff format --check .
 ```
 
-A devcontainer with `gcloud` preinstalled lives in `.devcontainer/`.
+A devcontainer with `gcloud` and VHS recording tools preinstalled lives in `.devcontainer/`.
+See [demo regeneration instructions](demo/README.md#regenerate) to record the walkthroughs locally.

@@ -2,7 +2,12 @@ FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client curl unzip apt-transport-https ca-certificates gnupg \
+    ffmpeg chromium fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# Pinned upstream binaries: Bookworm has no ttyd package on arm64.
+COPY install-demo-tools.sh /tmp/install-demo-tools.sh
+RUN bash /tmp/install-demo-tools.sh && rm /tmp/install-demo-tools.sh
 
 # Google Cloud CLI (official apt repo instructions for Debian/Ubuntu)
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
