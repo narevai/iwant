@@ -2,6 +2,7 @@ import sys
 from unittest.mock import MagicMock
 
 from iwant import infra
+from iwant.records import CloudStatus
 
 
 def test_setup_hint_known_cloud():
@@ -44,7 +45,7 @@ def test_fetch_enabled_none_on_unexpected_shape(monkeypatch):
 def test_check_all_marks_disabled_clouds_false(monkeypatch):
     monkeypatch.setattr(infra, "_fetch_enabled", lambda: set())
     statuses = infra.check_all()
-    assert statuses == {c: False for c in infra.COMPUTE_CLOUDS}
+    assert statuses == [CloudStatus(c, False) for c in infra.COMPUTE_CLOUDS]
 
 
 def test_enabled_infra_filters_to_compute_clouds_order(monkeypatch):

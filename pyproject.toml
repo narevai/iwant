@@ -19,6 +19,9 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
+  "basedpyright>=1.40,<2",
+  "types-PyYAML>=6.0",
+  "types-requests>=2.31",
 ]
 
 [project.scripts]
@@ -36,3 +39,9 @@ select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.basedpyright]
+include = ["iwant", "demo", "tests"]
+typeCheckingMode = "standard"
+strict = ["demo"]
+pythonVersion = "3.10"

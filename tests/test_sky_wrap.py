@@ -21,7 +21,9 @@ def _fake_sky(monkeypatch, rows=None, error=None):
 
 def test_all_clusters_skips_non_iwant(monkeypatch):
     _fake_sky(monkeypatch, [_row("iwant-a-v1-abc123"), _row("someone-else")])
-    assert [c["name"] for c in sky_wrap.all_clusters()] == ["iwant-a-v1-abc123"]
+    clusters = sky_wrap.all_clusters()
+    assert clusters is not None
+    assert [c.name for c in clusters] == ["iwant-a-v1-abc123"]
 
 
 def test_all_clusters_none_on_failure(monkeypatch, capsys):

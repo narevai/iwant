@@ -1,6 +1,7 @@
 import contextlib
 import io
 
+from .records import CloudStatus
 from .spinner import Spinner
 
 # Clouds iwant can launch on - each needs its SkyPilot extra in
@@ -57,7 +58,7 @@ def enabled_infra() -> list[str]:
     return [c for c in COMPUTE_CLOUDS if c in enabled]
 
 
-def check_all() -> dict[str, bool]:
+def check_all() -> list[CloudStatus]:
     """Every cloud in COMPUTE_CLOUDS mapped to whether it's enabled."""
     enabled = _fetch_enabled() or set()
-    return {c: (c in enabled) for c in COMPUTE_CLOUDS}
+    return [CloudStatus(c, c in enabled) for c in COMPUTE_CLOUDS]

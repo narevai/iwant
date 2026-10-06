@@ -12,14 +12,10 @@ if (($# > 1)); then
   echo "Usage: bash demo/render.sh [functionality|models]" >&2; exit 2
 fi
 
-# Prefer the repo venv, but allow an activated or system installation too.
-if [[ -x .venv/bin/python ]]; then
-  export PATH="$repo_root/.venv/bin:$PATH"
-fi
 for tool in vhs ttyd ffmpeg ffprobe chromium python flock; do
   command -v "$tool" >/dev/null || { echo "Missing $tool; rebuild the devcontainer." >&2; exit 1; }
 done
-python -c 'import iwant, click, questionary, requests, yaml'
+python -c 'import sys; assert sys.prefix == sys.base_prefix, "Use system Python"; import iwant, click, questionary, requests, yaml'
 
 # GIF palette generation buffers frames; concurrent encoders exhaust small containers.
 if [[ "${IWANT_DEMO_LOCK_HELD:-0}" != 1 ]]; then
@@ -36,7 +32,8 @@ export IWANT_DEMO_ROOT="$repo_root"
 cat > "$recording_tmp/iwant" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$IWANT_DEMO_PYTHON" "$IWANT_DEMO_ROOT/demo/simulator.py" "$@"
+cd "$IWANT_DEMO_ROOT"
+exec "$IWANT_DEMO_PYTHON" -m demo.simulator "$@"
 SH
 chmod +x "$recording_tmp/iwant"
 export PATH="$recording_tmp:$PATH"

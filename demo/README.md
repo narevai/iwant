@@ -38,14 +38,13 @@ The pinned upstream binaries support Linux amd64 and arm64 and are verified agai
 Then, from the repository root:
 
 ```bash
-uv venv .venv
-uv pip install --python .venv/bin/python -e '.[dev]'
+sudo uv pip install --system -e '.[dev]'
 bash demo/render.sh                 # all 13 demos, GIF + MP4
 bash demo/render.sh functionality   # six functionality clips
 bash demo/render.sh models          # seven interactive model launches
 ```
 
-The renderer uses the repo virtual environment when present. It checks dependencies, creates a temporary
+The renderer uses system Python. It checks dependencies, creates a temporary
 `iwant` wrapper in its own PATH, and runs the real Click CLI with the fixtures in `simulator.py`.
 Fixture state persists between commands within a clip and resets between clips. The wrapper is removed
 when rendering finishes. The installed `iwant` command is unaffected.
@@ -66,9 +65,10 @@ without opening a browser. All media is generated locally, without cloud provisi
 Validate the simulator and normal CLI behavior with:
 
 ```bash
-.venv/bin/pytest
-.venv/bin/ruff check .
-.venv/bin/ruff format --check .
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+basedpyright --pythonpath "$(command -v python)"
 ```
 
 The renderer also decodes each GIF and MP4 with FFmpeg to catch damaged or incomplete exports.

@@ -26,10 +26,10 @@ class _SectionedGroup(click.Group):
 
     SECTIONS = (("up", "down"), ("auth",), ("list", "ssh"))
 
-    def list_commands(self, ctx):
+    def list_commands(self, ctx: click.Context) -> list[str]:
         return [name for section in self.SECTIONS for name in section]
 
-    def format_commands(self, ctx, formatter):
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         width = max(len(name) for name in self.list_commands(ctx))
         with formatter.section("Commands"):
             for i, section in enumerate(self.SECTIONS):
@@ -41,7 +41,7 @@ class _SectionedGroup(click.Group):
 
 
 @click.group(cls=_SectionedGroup)
-def main():
+def main() -> None:
     """iwant - launch vLLM model servers on cloud GPUs."""
     ensure_cloud_env()
     threading.Thread(target=_prefetch_sky, daemon=True).start()
@@ -58,7 +58,7 @@ def _pick_running(action: str, statuses: set[str] | None = None) -> str | None:
     if instances is None:
         return None  # sky.status() failed - error already printed
     if statuses is not None:
-        instances = [i for i in instances if i["status"] in statuses]
+        instances = [i for i in instances if i.status in statuses]
     if not instances:
         click.echo("No running instances found.")
         return None
@@ -123,7 +123,18 @@ def _resolve_or_pick(cluster: str | None, action: str, statuses: set[str] | None
     is_flag=True,
     help="Don't stream setup/boot logs - wait silently and print the final summary.",
 )
-def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes, no_autostop, quiet):
+def launch_cmd(
+    model: str | None,
+    dry_run: bool,
+    yes: bool,
+    infra: str | None,
+    spot: bool,
+    api_key: str | None,
+    hf_token: str | None,
+    idle_minutes: int | None,
+    no_autostop: bool,
+    quiet: bool,
+) -> None:
     """Deploy MODEL on a cloud GPU (pick one interactively if omitted) and
     print the server address and API key."""
     try:
@@ -146,7 +157,7 @@ def launch_cmd(model, dry_run, yes, infra, spot, api_key, hf_token, idle_minutes
 
 @main.command(name="down", short_help="Tear down a model")
 @click.argument("cluster", required=False)
-def down_cmd(cluster):
+def down_cmd(cluster: str | None) -> None:
     """Tear down CLUSTER (see `iwant list`); pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "tear down")
     if cluster is None:
@@ -155,12 +166,13 @@ def down_cmd(cluster):
 
 
 @main.command(name="auth", short_help="Login to your cloud provider")
-def auth_cmd():
+def auth_cmd() -> None:
     """Show which clouds are ready, and how to log in to the rest."""
     statuses = infra_mod.check_all()
 
     if not sys.stdin.isatty():
-        for cloud, ok in statuses.items():
+        for status in statuses:
+            cloud, ok = status.name, status.enabled
             if ok:
                 click.echo(f"{cloud}: enabled")
             else:
@@ -170,7 +182,7 @@ def auth_cmd():
     picked = tui.pick_setup_target(statuses)
     if picked is None:
         return
-    if statuses[picked]:
+    if next(status.enabled for status in statuses if status.name == picked):
         click.echo(f"{picked}: already enabled - nothing to do.")
     else:
         click.echo(f"{picked}: not set up yet. To enable it, run:")
@@ -179,14 +191,14 @@ def auth_cmd():
 
 @main.command(name="list", short_help="Show deployed models")
 @click.argument("cluster", required=False)
-def list_cmd(cluster):
+def list_cmd(cluster: str | None) -> None:
     """Show deployed models, or just CLUSTER."""
     sys.exit(sky_wrap.status(cluster))
 
 
 @main.command(name="ssh", short_help="SSH into a cluster")
 @click.argument("cluster", required=False)
-def ssh_cmd(cluster):
+def ssh_cmd(cluster: str | None) -> None:
     """SSH into CLUSTER; pick interactively if omitted."""
     cluster = _resolve_or_pick(cluster, "ssh into", statuses={"UP"})
     if cluster is None:

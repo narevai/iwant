@@ -92,8 +92,9 @@ points at the exact config a benchmark ran against.
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest && ruff check . && ruff format --check .
+sudo uv pip install --system -e ".[dev]"
+python -m pytest && python -m ruff check . && python -m ruff format --check .
+basedpyright --pythonpath "$(command -v python)"
 ```
 
 A devcontainer with `gcloud` and VHS recording tools preinstalled lives in `.devcontainer/`.

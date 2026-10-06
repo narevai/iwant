@@ -32,6 +32,7 @@ def test_tail_progress_line_truncates_long_lines(monkeypatch):
     fake_sky.tail_logs.return_value = iter(["x" * 200])
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
     result = launch_mod._tail_progress_line("cluster", 1)
+    assert result is not None
     assert len(result) == 100
     assert result.endswith("...")
 
