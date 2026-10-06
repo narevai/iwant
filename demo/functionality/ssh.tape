@@ -6,7 +6,7 @@ Type "iwant ssh"
 Sleep 500ms
 Enter
 Wait+Screen /Which instance/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Connection closed/
 Wait+Line /❯$/

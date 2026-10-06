@@ -9,17 +9,21 @@ SelectChoice = str | questionary.Choice
 SelectDefault = str | questionary.Choice | None
 
 
+class PromptQuestion(Protocol):
+    def ask(self) -> object: ...
+
+
 class SelectPrompt(Protocol):
     def __call__(
         self, message: str, choices: Sequence[SelectChoice], default: SelectDefault = None
-    ) -> questionary.Question: ...
+    ) -> PromptQuestion: ...
 
 
 select_prompt: SelectPrompt = questionary.select
 Answer = TypeVar("Answer", str, int, bool)
 
 
-def ask(question: questionary.Question, answer_type: type[Answer]) -> Answer | None:
+def ask(question: PromptQuestion, answer_type: type[Answer]) -> Answer | None:
     answer: object = question.ask()
     if answer is None:
         return None

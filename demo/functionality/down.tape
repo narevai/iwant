@@ -6,7 +6,7 @@ Type "iwant down"
 Sleep 500ms
 Enter
 Wait+Screen /Which instance/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Cluster removed/
 Wait+Line /❯$/

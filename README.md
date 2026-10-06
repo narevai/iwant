@@ -39,7 +39,7 @@ Idle instances shut down after 30 minutes by default (`--idle-minutes N`, `--no-
 
 ![Interactive model launch](demo/functionality/up.gif)
 
-[Watch the demos](demo/README.md): six CLI workflows and seven interactive model launches, as square
+[Watch the demos](demo/README.md): six CLI workflows and seven interactive model launches, as wider
 GIFs and MP4s.
 
 ## Install

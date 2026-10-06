@@ -1,6 +1,6 @@
 # iwant demos
 
-Thirteen square terminal walkthroughs with larger text, colored prompts and results, and a rounded
+Thirteen wider terminal walkthroughs with larger text, colored prompts and results, and a rounded
 terminal frame. Six clips cover CLI functionality; seven show interactive model launches.
 
 ## Functionality
@@ -42,6 +42,7 @@ sudo uv pip install --system -e '.[dev]'
 bash demo/render.sh                 # all 13 demos, GIF + MP4
 bash demo/render.sh functionality   # six functionality clips
 bash demo/render.sh models          # seven interactive model launches
+bash demo/render.sh functionality up # one clip for a quick preview
 ```
 
 The renderer uses system Python. It checks dependencies, creates a temporary
@@ -49,13 +50,14 @@ The renderer uses system Python. It checks dependencies, creates a temporary
 Fixture state persists between commands within a clip and resets between clips. The wrapper is removed
 when rendering finishes. The installed `iwant` command is unaffected.
 
-`common.tape` shares the 1080×1080 canvas, 44px font, rounded frame, theme, and timing. `session.tape`
+`common.tape` shares the 1440×1080 canvas, 44px font, rounded frame, theme, and timing. `session.tape`
 sets up the colored shell prompt behind the scenes. Each clip has its own editable VHS tape and both
 outputs are versioned alongside it. Recording-only styling accents the actual CLI output and displays
 the wide listing table as compact cards. Launches finish on a dedicated endpoint screen with shortened
 key previews. Prompt and completion waits have VHS's default 15-second
-timeout; short pauses make selections readable. Recording commands alone set `VHS_NO_SANDBOX=true`
-for container Chromium.
+timeout. Choices stay visible for 2.5 seconds, then accepted answers hold for 1.2 seconds before the
+next prompt opens. The window bar is 96px tall, with larger controls. Recording commands alone set
+`VHS_NO_SANDBOX=true` for container Chromium.
 
 The recording backend uses local fixtures for cloud operations, health checks, and SSH, with shortened
 wait times, example keys, and documentation addresses. The clips demonstrate the workflow rather than

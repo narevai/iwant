@@ -10,7 +10,7 @@ import textwrap
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import redirect_stdout
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
@@ -98,7 +98,7 @@ class RecordingOutput:
                 text = (
                     color(name, "purple")
                     + "\n  "
-                    + color(textwrap.fill(f"{infra}  ·  {resources}  ·  {status}", width=32), "green")
+                    + color(textwrap.fill(f"{infra}  ·  {resources}  ·  {status}", width=46), "green")
                     + "\n  "
                     + color(endpoint, "cyan")
                     + "\n  "
@@ -111,14 +111,28 @@ class RecordingOutput:
             text = color("✓ GCP is ready", "green")
         elif text.startswith("No clusters"):
             text = color(text, "green")
+        elif text.lstrip().startswith("gcloud auth"):
+            text = color(textwrap.fill(text, width=46), "cyan")
         elif text.startswith(("Recipe:", "SSH:", "Pricing:", "Test:", "Dry run plan:")):
             text = color(text, "purple")
         elif text.startswith(("Server:", "API key", "Provisioning", "Preparing", "Starting", "Connected")):
-            text = color(textwrap.fill(text, width=32), "cyan")
+            text = color(textwrap.fill(text, width=46), "cyan")
         elif text.startswith(("Launch submitted", "Job ", "Connection closed")):
             text = color(text, "muted")
         self.stream.write(text)
         return original_length
+
+
+@dataclass(frozen=True)
+class RecordingQuestion:
+    question: tui.PromptQuestion
+
+    def ask(self) -> object:
+        answer = self.question.ask()
+        if answer is not None:
+            # Keep the accepted green answer visible before the next prompt redraws.
+            time.sleep(1.2)
+        return answer
 
 
 def style_prompts() -> tui.SelectPrompt:
@@ -137,17 +151,19 @@ def style_prompts() -> tui.SelectPrompt:
 
     def wrapped_select(
         message: str, choices: Sequence[tui.SelectChoice], default: tui.SelectDefault = None
-    ) -> questionary.Question:
+    ) -> tui.PromptQuestion:
         wrapped: list[questionary.Choice] = []
         for choice in choices:
             if isinstance(choice, str):
-                choice = questionary.Choice(title=textwrap.fill(choice, width=28), value=choice)
+                choice = questionary.Choice(title=textwrap.fill(choice, width=46), value=choice)
             else:
                 if not isinstance(choice.title, str):
                     raise TypeError("Recording choices must have plain text titles")
-                choice.title = textwrap.fill(choice.title, width=28)
+                choice.title = textwrap.fill(choice.title, width=46)
             wrapped.append(choice)
-        return questionary.select(textwrap.fill(message, width=28), wrapped, default=default, style=style)
+        return RecordingQuestion(
+            questionary.select(textwrap.fill(message, width=46), wrapped, default=default, style=style)
+        )
 
     tui.select_prompt = wrapped_select
     return original_select

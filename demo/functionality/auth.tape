@@ -7,9 +7,9 @@ Type "iwant auth"
 Sleep 500ms
 Enter
 Wait+Screen /Pick a cloud/
-Sleep 800ms
+Sleep 2500ms
 Enter
-Wait+Screen /application-default login/
+Wait+Screen /gcp: not set up yet/
 Wait+Line /❯$/
 Sleep 3s
 
@@ -23,7 +23,7 @@ Type "iwant auth"
 Sleep 500ms
 Enter
 Wait+Screen /Pick a cloud/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /GCP is ready/
 Wait+Line /❯$/

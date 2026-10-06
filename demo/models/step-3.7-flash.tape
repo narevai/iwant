@@ -6,16 +6,16 @@ Type "iwant up step-3.7-flash"
 Sleep 500ms
 Enter
 Wait+Screen /Where do you want to launch/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /On-demand or spot/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Autostop after/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Ready to launch/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Model ready/
 Wait+Line /❯$/

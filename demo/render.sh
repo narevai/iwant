@@ -6,10 +6,16 @@ cd "$repo_root"
 case "${1:-all}" in
   all) groups=(functionality models) ;;
   functionality|models) groups=("$1") ;;
-  *) echo "Usage: bash demo/render.sh [functionality|models]" >&2; exit 2 ;;
+  *) echo "Usage: bash demo/render.sh [functionality|models [clip]]" >&2; exit 2 ;;
 esac
-if (($# > 1)); then
-  echo "Usage: bash demo/render.sh [functionality|models]" >&2; exit 2
+requested_clip="${2:-}"
+if (($# > 2)) || [[ -n "$requested_clip" && "${1:-all}" == all ]]; then
+  echo "Usage: bash demo/render.sh [functionality|models [clip]]" >&2; exit 2
+fi
+if [[ -n "$requested_clip" ]]; then
+  if [[ ! "$requested_clip" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || [[ ! -f "demo/${groups[0]}/$requested_clip.tape" ]]; then
+    echo "Unknown demo: ${groups[0]}/$requested_clip" >&2; exit 2
+  fi
 fi
 
 for tool in vhs ttyd ffmpeg ffprobe chromium python flock; do
@@ -43,6 +49,9 @@ export VHS_NO_SANDBOX=true
 for group in "${groups[@]}"; do
   for tape in "demo/$group/"*.tape; do
     clip=$(basename "$tape" .tape)
+    if [[ -n "$requested_clip" && "$clip" != "$requested_clip" ]]; then
+      continue
+    fi
     export IWANT_DEMO_SCENE="$clip"
     export IWANT_DEMO_STATE="$recording_tmp/state.json"
     rm -f "$IWANT_DEMO_STATE"

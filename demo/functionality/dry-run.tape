@@ -6,18 +6,18 @@ Type "iwant up gpt-oss-20b"
 Sleep 500ms
 Enter
 Wait+Screen /Where do you want to launch/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /On-demand or spot/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Autostop after/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Ready to launch/
-Sleep 800ms
+Sleep 2500ms
 Down
-Sleep 500ms
+Sleep 1500ms
 Enter
 Wait+Screen /Launch plan/
 Wait+Line /❯$/

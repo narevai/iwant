@@ -6,21 +6,21 @@ Type "iwant up"
 Sleep 500ms
 Enter
 Wait+Screen /What do you want to launch/
-Sleep 800ms
-Down 2
-Sleep 500ms
+Sleep 2500ms
+Down@700ms 2
+Sleep 1500ms
 Enter
 Wait+Screen /Where do you want to launch/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /On-demand or spot/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Autostop after/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Ready to launch/
-Sleep 800ms
+Sleep 2500ms
 Enter
 Wait+Screen /Model ready/
 Wait+Line /❯$/
