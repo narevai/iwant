@@ -22,8 +22,8 @@ OpenAI-compatible endpoint.
 
 ```console
 $ iwant up
-? What do you want to launch? gpt-oss-20b
-Recipe: gpt-oss-20b@v1 (latest)
+? What do you want to launch? deepseek-v4-flash
+Recipe: deepseek-v4-flash@v1 (latest)
 ? Where do you want to launch it? GCP
 ? On-demand or spot? On-demand (default, won't get reclaimed)
 ? Autostop after how long idle? 30 minutes (default)
@@ -31,8 +31,8 @@ Recipe: gpt-oss-20b@v1 (latest)
 ...
 Server:  http://<IP>:8000/v1
 API key: <generated>
-SSH:     ssh iwant-gpt-oss-20b-v1-a1b2c3
-Recipe:  gpt-oss-20b@v1
+SSH:     ssh iwant-deepseek-v4-flash-v1-a1b2c3
+Recipe:  deepseek-v4-flash@v1
 ```
 
 Idle instances shut down after 30 minutes by default (`--idle-minutes N`, `--no-autostop`).

@@ -7,7 +7,7 @@ terminal frame. Six clips cover CLI functionality; seven show interactive model 
 
 | Flow | GIF | MP4 |
 | --- | --- | --- |
-| Pick and launch a model | [Watch](functionality/up.gif) | [Download](functionality/up.mp4) |
+| Pick and launch DeepSeek V4 Flash | [Watch](functionality/up.gif) | [Download](functionality/up.mp4) |
 | Preview a launch without spending | [Watch](functionality/dry-run.gif) | [Download](functionality/dry-run.mp4) |
 | Check cloud auth and see setup guidance | [Watch](functionality/auth.gif) | [Download](functionality/auth.mp4) |
 | List models and endpoints | [Watch](functionality/list.gif) | [Download](functionality/list.mp4) |

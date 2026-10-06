@@ -7,8 +7,6 @@ Sleep 500ms
 Enter
 Wait+Screen /What do you want to launch/
 Sleep 2500ms
-Down@700ms 2
-Sleep 1500ms
 Enter
 Wait+Screen /Where do you want to launch/
 Sleep 2500ms
