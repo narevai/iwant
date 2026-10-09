@@ -1,23 +1,11 @@
 import subprocess
 import time
 
+from .records import ClusterRecord, RunningCluster
 from .spinner import Spinner
 
 
-def _field(row, name, default=None):
-    """Reads a field from a sky.status() row, whether it's an object or a dict."""
-    if isinstance(row, dict):
-        return row.get(name, default)
-    return getattr(row, name, default)
-
-
-def _status_value(status) -> str:
-    if status is None:
-        return "?"
-    return getattr(status, "value", None) or str(status)
-
-
-def _relative_time(ts) -> str:
+def _relative_time(ts: float | None) -> str:
     if not ts:
         return "-"
     delta = time.time() - ts
@@ -30,7 +18,7 @@ def _relative_time(ts) -> str:
     return f"{int(delta // 86400)}d ago"
 
 
-def _iwant_rows(spinner_message: str) -> list | None:
+def _iwant_rows(spinner_message: str) -> list[ClusterRecord] | None:
     """sky.status() rows for iwant clusters, or None if the call failed
     (error already printed). On None, don't claim a cluster is missing - it
     may exist while the API server is unreachable."""
@@ -42,23 +30,16 @@ def _iwant_rows(spinner_message: str) -> list | None:
     except Exception as e:
         print(f"sky.status() failed: {e}")
         return None
-    return [row for row in rows or [] if (_field(row, "name") or "").startswith("iwant-")]
+    records = [ClusterRecord.from_sdk(row) for row in rows or []]
+    return [row for row in records if row.name.startswith("iwant-")]
 
 
-def all_clusters() -> list[dict] | None:
-    """Every iwant cluster as {"name", "infra", "status"}, in any status;
-    None if sky.status() failed."""
+def all_clusters() -> list[RunningCluster] | None:
+    """Typed picker records, or None when the cloud status lookup fails."""
     rows = _iwant_rows("Checking clusters...")
     if rows is None:
         return None
-    return [
-        {
-            "name": _field(row, "name"),
-            "infra": _field(row, "resources_str"),
-            "status": _status_value(_field(row, "status")),
-        }
-        for row in rows
-    ]
+    return [RunningCluster(row.name, row.resources_str, row.status) for row in rows]
 
 
 def resolve_cluster(cluster: str, statuses: set[str] | None = None) -> str | None:
@@ -67,11 +48,11 @@ def resolve_cluster(cluster: str, statuses: set[str] | None = None) -> str | Non
     clusters = all_clusters()
     if clusters is None:
         return None
-    if any(c["name"] == cluster for c in clusters):
+    if any(c.name == cluster for c in clusters):
         return cluster
 
     print(f"No cluster named '{cluster}' found.")
-    available = [c["name"] for c in clusters if statuses is None or c["status"] in statuses]
+    available = [c.name for c in clusters if statuses is None or c.status in statuses]
     if available:
         print("Running: " + ", ".join(available))
     return None
@@ -82,40 +63,40 @@ def status(cluster: str | None = None) -> int:
     if result is None:
         return 1
     if cluster:
-        result = [row for row in result if _field(row, "name") == cluster]
+        result = [row for row in result if row.name == cluster]
     if not result:
         print("No clusters found.")
         return 0
 
-    up = [_field(row, "name") for row in result if _status_value(_field(row, "status")) == "UP"]
-    endpoints = {}
+    up = [row.name for row in result if row.status == "UP"]
+    endpoints: dict[str, str | None] = {}
     if up:
         with Spinner("Looking up endpoints..."):
             endpoints = {name: endpoint(name) for name in up}
 
-    rows = []
+    rows: list[tuple[str, str, str, str, str, str, str]] = []
     for row in result:
-        cloud = _field(row, "cloud")
-        region = _field(row, "region")
+        cloud = row.cloud
+        region = row.region
         infra = f"{cloud} ({region})" if cloud and region else (cloud or "-")
-        autostop_min = _field(row, "autostop")
+        autostop_min = row.autostop
         autostop = "-"
         if autostop_min and autostop_min > 0:
-            autostop = f"{autostop_min}m" + (" (down)" if _field(row, "to_down") else "")
-        ep = endpoints.get(_field(row, "name"))
+            autostop = f"{autostop_min}m" + (" (down)" if row.to_down else "")
+        ep = endpoints.get(row.name)
         rows.append(
             (
-                _field(row, "name", "?"),
+                row.name,
                 infra,
-                _field(row, "resources_str", "-"),
-                _status_value(_field(row, "status")),
+                row.resources_str,
+                row.status,
                 f"http://{ep}/v1" if ep else "-",
                 autostop,
-                _relative_time(_field(row, "launched_at")),
+                _relative_time(row.launched_at),
             )
         )
 
-    header = ["NAME", "INFRA", "RESOURCES", "STATUS", "ENDPOINT", "AUTOSTOP", "LAUNCHED"]
+    header = ("NAME", "INFRA", "RESOURCES", "STATUS", "ENDPOINT", "AUTOSTOP", "LAUNCHED")
     table = [header, *rows]
     widths = [max(len(str(r[i])) for r in table) for i in range(len(header))]
     for r in table:

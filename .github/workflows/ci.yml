@@ -39,3 +39,14 @@ jobs:
           python-version: "3.11"
       - run: uv pip install --system -e ".[dev]"
       - run: pytest -v
+
+  types:
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv pip install --system -e ".[dev]"
+      - run: basedpyright --pythonpath "$(command -v python)"

@@ -1,0 +1,22 @@
+Output demo/models/ling-3.0-flash-fp8.mp4
+Source demo/common.tape
+Source demo/session.tape
+
+Type "iwant up ling-3.0-flash-fp8"
+Sleep 500ms
+Enter
+Wait+Screen /Where do you want to launch/
+Sleep 2500ms
+Enter
+Wait+Screen /On-demand or spot/
+Sleep 2500ms
+Enter
+Wait+Screen /Autostop after/
+Sleep 2500ms
+Enter
+Wait+Screen /Ready to launch/
+Sleep 2500ms
+Enter
+Wait+Screen /Model ready/
+Wait+Line /❯$/
+Sleep 4s

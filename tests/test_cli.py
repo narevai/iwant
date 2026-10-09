@@ -1,6 +1,15 @@
+import pytest
 from click.testing import CliRunner
 
+from iwant import cli
 from iwant.cli import main
+
+
+@pytest.fixture(autouse=True)
+def no_background_sdk_import(monkeypatch):
+    # These CLI-only tests need no SDK; a lingering import races later fixtures
+    # that replace sys.modules["sky"] with a local test module.
+    monkeypatch.setattr(cli, "_prefetch_sky", lambda: None)
 
 
 def test_help_lists_commands_in_sections():

@@ -3,6 +3,8 @@ import secrets
 import sys
 import tempfile
 import time
+from enum import Enum, auto
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests
@@ -28,13 +30,18 @@ HEALTH_CHECK_TIMEOUT = 1800
 HEALTH_CHECK_GLOBAL_TIMEOUT = 3600
 HEALTH_CHECK_INTERVAL = 5
 
+
 # Returned when the user backs out of a picker - distinct from None, which
 # is a valid value for several of the settings.
-_CANCELLED = object()
+class Cancelled(Enum):
+    VALUE = auto()
+
+
+_CANCELLED = Cancelled.VALUE
 
 
 def _materialize_task_yaml(
-    source_path,
+    source_path: str | Path,
     infra: str | None,
     api_key: str | None,
     use_spot: bool,
@@ -64,7 +71,9 @@ def _materialize_task_yaml(
     return tmp.name
 
 
-def _resolve_autostop(idle_minutes: int | None, autostop_given: bool, interactive: bool):
+def _resolve_autostop(
+    idle_minutes: int | None, autostop_given: bool, interactive: bool
+) -> int | None | Cancelled:
     """Returns the final idle-minutes-to-autostop (None means disabled), or
     _CANCELLED if the user backed out of the picker."""
     if idle_minutes is None and not autostop_given and interactive:
@@ -80,7 +89,7 @@ def _resolve_autostop(idle_minutes: int | None, autostop_given: bool, interactiv
     return idle_minutes
 
 
-def _resolve_model(model: str | None, interactive: bool):
+def _resolve_model(model: str | None, interactive: bool) -> str | Cancelled:
     """The model name, or _CANCELLED (after printing why)."""
     if model is not None:
         return model
@@ -98,7 +107,7 @@ def _resolve_model(model: str | None, interactive: bool):
     return picked
 
 
-def _resolve_infra(infra: str | None, interactive: bool):
+def _resolve_infra(infra: str | None, interactive: bool) -> str | None | Cancelled:
     """The chosen infra, or _CANCELLED if the user backed out or no cloud is
     enabled - better to stop here than fail at sky.launch() after all the
     other prompts."""
@@ -117,7 +126,7 @@ def _resolve_infra(infra: str | None, interactive: bool):
     return picked
 
 
-def _resolve_spot(use_spot: bool, interactive: bool):
+def _resolve_spot(use_spot: bool, interactive: bool) -> bool | Cancelled:
     """use_spot, asking only if --spot wasn't given; _CANCELLED if the user
     backed out."""
     if use_spot or not interactive:
@@ -129,7 +138,7 @@ def _resolve_spot(use_spot: bool, interactive: bool):
     return picked
 
 
-def _resolve_dry_run(dry_run: bool, interactive: bool):
+def _resolve_dry_run(dry_run: bool, interactive: bool) -> bool | Cancelled:
     """dry_run, asking only if --dry-run wasn't given; _CANCELLED if the user
     backed out."""
     if dry_run or not interactive:
@@ -146,7 +155,7 @@ def _format_duration(seconds: float) -> str:
     return f"{seconds // 60}m {seconds % 60}s" if seconds >= 60 else f"{seconds}s"
 
 
-def _tail_progress_line(cluster: str, job_id) -> str | None:
+def _tail_progress_line(cluster: str, job_id: int | None) -> str | None:
     """Last non-empty line of the launch job's log, shown as progress while
     the server isn't up yet. None if there's no job or the fetch fails."""
     if job_id is None:
@@ -170,7 +179,7 @@ def _tail_progress_line(cluster: str, job_id) -> str | None:
 _JOB_NONTERMINAL = {"INIT", "PENDING", "SETTING_UP", "RUNNING"}
 
 
-def _job_terminal_status(cluster: str, job_id) -> str | None:
+def _job_terminal_status(cluster: str, job_id: int | None) -> str | None:
     """The launch job's status if it has ended (e.g. "FAILED"). The server
     is meant to run forever, so any final status means it won't come up.
     None if it's still running or the lookup fails."""
@@ -192,7 +201,7 @@ def _job_terminal_status(cluster: str, job_id) -> str | None:
 
 
 def _wait_until_healthy(
-    ep: str, key: str | None, spinner: Spinner, cluster: str, job_id
+    ep: str, key: str | None, spinner: Spinner, cluster: str, job_id: int | None
 ) -> tuple[bool, float, str | None]:
     """Polls GET /v1/models until vLLM responds, the job ends, or a timeout
     hits (see HEALTH_CHECK_TIMEOUT). Shows the latest job log line in the
@@ -345,30 +354,34 @@ def launch(
 ) -> int:
     interactive = not yes and sys.stdin.isatty()
 
-    model = _resolve_model(model, interactive)
-    if model is _CANCELLED:
+    model_value = _resolve_model(model, interactive)
+    if isinstance(model_value, Cancelled):
         return 1
 
+    model = model_value
     task_yaml, version = resolve_task_yaml(model)
     recipe = f"{model}@v{version}"
     cluster = new_cluster_name(model, version)
     print(f"Recipe: {recipe} (latest)")
 
     chosen_infra = _resolve_infra(infra, interactive)
-    if chosen_infra is _CANCELLED:
+    if isinstance(chosen_infra, Cancelled):
         return 1
 
-    use_spot = _resolve_spot(use_spot, interactive)
-    if use_spot is _CANCELLED:
+    use_spot_value = _resolve_spot(use_spot, interactive)
+    if isinstance(use_spot_value, Cancelled):
         return 1
+    use_spot = use_spot_value
 
-    idle_minutes = _resolve_autostop(idle_minutes, autostop_given, interactive)
-    if idle_minutes is _CANCELLED:
+    idle_minutes_value = _resolve_autostop(idle_minutes, autostop_given, interactive)
+    if isinstance(idle_minutes_value, Cancelled):
         return 1
+    idle_minutes = idle_minutes_value
 
-    dry_run = _resolve_dry_run(dry_run, interactive)
-    if dry_run is _CANCELLED:
+    dry_run_value = _resolve_dry_run(dry_run, interactive)
+    if isinstance(dry_run_value, Cancelled):
         return 1
+    dry_run = dry_run_value
 
     key = None if dry_run else (api_key or secrets.token_hex(24))
     task_path = _materialize_task_yaml(

@@ -1,94 +1,156 @@
 <div align="center">
 
-<h1>iwant</h1>
+<img src="docs/assets/banner.gif" alt="iwant up — animated command cycling through the available model recipes" width="960">
 
-Name a model, get an OpenAI-compatible endpoint on a cloud GPU.
+## Your next model is one command away.
 
-<h3>
+Launch an open model on a cloud GPU. Get an OpenAI-compatible endpoint,<br>
+an API key, and SSH access — all in your own cloud account.
 
-[Recipes](iwant/recipes) | [SkyPilot](https://docs.skypilot.co) | [vLLM](https://github.com/vllm-project/vllm)
+[![CI](https://github.com/narevai/iwant/actions/workflows/ci.yml/badge.svg)](https://github.com/narevai/iwant/actions/workflows/ci.yml)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
-</h3>
-
-[![Unit Tests](https://github.com/narevai/iwant/actions/workflows/ci.yml/badge.svg)](https://github.com/narevai/iwant/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+[Try it](#try-gpt-oss-20b) · [Models](#models) · [Commands](#commands) · [More demos](demo/README.md)
 
 </div>
 
----
-
-One command rents a cloud GPU box, starts vLLM on it with a tested recipe, and gives you back an
-OpenAI-compatible endpoint.
-
-```console
-$ iwant up
-? What do you want to launch? gpt-oss-20b
-Recipe: gpt-oss-20b@v1 (latest)
-? Where do you want to launch it? GCP
-? On-demand or spot? On-demand (default, won't get reclaimed)
-? Autostop after how long idle? 30 minutes (default)
-? Ready to launch? Launch for real
-...
-Server:  http://<IP>:8000/v1
-API key: <generated>
-SSH:     ssh iwant-gpt-oss-20b-v1-a1b2c3
-Recipe:  gpt-oss-20b@v1
+```bash
+iwant up
 ```
 
-Idle instances shut down after 30 minutes by default (`--idle-minutes N`, `--no-autostop`).
+Choose a model. iwant rents the GPU, sets up the server, and waits until the API
+responds. Point your OpenAI-compatible app at the resulting URL and start sending
+prompts.
 
-## Install
+<p align="center">
+  <img src="demo/functionality/quickstart.gif" alt="Launch GPT OSS 20B, send a prompt with curl, receive a haiku, and tear down the cluster" width="800">
+</p>
+
+*Workflow demo: real CLI and curl, simulated cloud operations, a fixed sample answer,
+and shortened waits. It is not a live inference recording or a startup benchmark.*
+
+## Try GPT OSS 20B
+
+One L4 GPU, one model, one prompt. You'll need the `gcloud` CLI and a GCP project
+with billing enabled, L4 quota, and available capacity. GCP is currently the
+supported cloud.
+
+### 1. Install and connect
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
+
+gcloud config set project YOUR_PROJECT_ID
+gcloud auth login
+gcloud auth application-default login
+iwant auth
 ```
 
-The installer puts iwant in `~/.iwant` and the `iwant` command in `~/.local/bin`. It sends one anonymous
-install event (OS, CPU arch, success/failure) - opt out with `IWANT_NO_TELEMETRY=1`.
+<details>
+<summary>Install location, telemetry, and installing from source</summary>
 
-Or from a clone:
+The installer puts iwant in `~/.iwant` and the command in `~/.local/bin`.
+If your shell cannot find `iwant`, add `~/.local/bin` to `PATH`.
+It sends an anonymous install event with OS, CPU architecture, and success/failure.
+To opt out:
 
 ```bash
-pip install -e .          # or: uv pip install -e .
+curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh -o /tmp/iwant-install.sh
+IWANT_NO_TELEMETRY=1 bash /tmp/iwant-install.sh
 ```
 
-Then:
+From source, with Python 3.10+:
 
 ```bash
-gcloud auth login && gcloud auth application-default login
-iwant auth                # which clouds are ready, and how to log in
+git clone https://github.com/narevai/iwant.git
+cd iwant
+pip install -e .
 ```
 
-Supported cloud: GCP.
+</details>
 
-GPU quota (e.g. `NVIDIA_L4_GPUS`) usually has to be requested in the GCP Console first.
-
-## Usage
+### 2. Preview, then launch
 
 ```bash
-iwant up                      # deploy a model - pick model, cloud and options
-iwant up MODEL --dry-run      # show the plan, spend nothing
-iwant up MODEL --yes          # no prompts (scripts/CI)
-iwant up --hf-token hf_xxx    # gated models (or: HF_TOKEN=hf_xxx iwant up)
-iwant down [CLUSTER]          # tear down a model
+# Inspect the plan without renting a GPU.
+iwant up gpt-oss-20b --infra gcp --dry-run --yes
 
-iwant auth                    # login status and how to log in
-
-iwant list [CLUSTER]          # deployed models, with their endpoints
-iwant ssh [CLUSTER]           # ssh into a cluster
+# Launch on-demand capacity.
+iwant up gpt-oss-20b --infra gcp --yes
 ```
 
-## Recipes
+Save the **Server** URL and **API key** printed during launch. iwant checks that
+the models API responds before reporting the server ready. Provisioning, weight
+downloads, and model loading take time; the GIF's timing is illustrative.
 
-Each model lives in `iwant/recipes/<model>/v<N>.yaml` and `iwant up` always takes the highest `N`.
-Published versions are never edited: any change goes into `v<N+1>.yaml`, so `<model>@v<N>` always
-points at the exact config a benchmark ran against.
+**Done experimenting? Run `iwant down`.** Resources bill in your account until
+removed. Ctrl+C detaches from the launch; it does not stop the remote server.
+The default 30-minute idle timer tracks cluster jobs, so a running server keeps
+it active even when there are no API requests.
 
-## Development
+### 3. Ask it something
+
+Paste your launch's URL and key below. This request prints just the answer:
 
 ```bash
-pip install -e ".[dev]"
-pytest && ruff check . && ruff format --check .
+export OPENAI_BASE_URL="http://<IP>:8000/v1"
+export OPENAI_API_KEY="<generated-key>"
+
+curl -fsS "$OPENAI_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai/gpt-oss-20b","messages":[{"role":"user","content":"Write a haiku about GPUs."}],"max_tokens":256}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["choices"][0]["message"]["content"])'
 ```
 
-A devcontainer with `gcloud` preinstalled lives in `.devcontainer/`.
+Your answer will vary. For an app, use the same base URL, API key, and model ID
+in its OpenAI-compatible client settings.
+
+### 4. Remove the GPU
+
+```bash
+iwant down              # pick your cluster interactively
+iwant list              # confirm it is gone
+```
+
+For scripts, use `iwant down EXACT_CLUSTER_NAME` with the name from `iwant list`.
+
+## Models
+
+The GPU requests below come directly from the latest repository recipes.
+
+| Model argument | GPUs | Recipe | Configuration evidence |
+| --- | --- | --- | --- |
+| `gpt-oss-20b` | 1 × L4 | [v1](iwant/recipes/gpt-oss-20b/v1.yaml) | First-run example; no verification report committed |
+| `deepseek-v4-flash` | 8 × H100 | [v1](iwant/recipes/deepseek-v4-flash/v1.yaml) | Recipe records a working launch; about 24 min to ready |
+| `deepseek-v4.1-flash` | 8 × H200 | [v2](iwant/recipes/deepseek-v4.1-flash/v2.yaml) | [Experimental TP8 configuration](iwant/recipes/deepseek-v4.1-flash/NOTES.md) |
+| `mimo-v2.6-flash` | 8 × H200 | [v2](iwant/recipes/mimo-v2.6-flash/v2.yaml) | [Experimental TP8 configuration](iwant/recipes/mimo-v2.6-flash/NOTES.md) |
+| `ling-3.0-flash-fp8` | 8 × H200 | [v1](iwant/recipes/ling-3.0-flash-fp8/v1.yaml) | [Chat response verified on TP8 + EP8](iwant/recipes/ling-3.0-flash-fp8/NOTES.md#verified) |
+| `step-3.7-flash` | 8 × H200 | [v2](iwant/recipes/step-3.7-flash/v2.yaml) | [Matches upstream verified hardware/config](iwant/recipes/step-3.7-flash/NOTES.md) |
+| `step-3.7-flash-optimized` | 8 × H200 | [v2](iwant/recipes/step-3.7-flash-optimized/v2.yaml) | [Throughput tuning and benchmark notes](iwant/recipes/step-3.7-flash-optimized/NOTES.md) |
+
+Evidence describes what is recorded in this repository, rather than a guarantee
+for every launch. The DeepSeek timing is an undated recipe note, not a current
+benchmark. Hourly cost depends on region and spot/on-demand capacity; inspect the
+launch plan and your cloud pricing before provisioning.
+
+Recipes hold model IDs, machine requirements, setup steps, and serving flags.
+`iwant up MODEL` uses the latest recipe and prints its version.
+[Recipe versions and launch options →](docs/usage.md)
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `iwant up [MODEL]` | Launch a model; omit the name for an interactive picker |
+| `iwant down [CLUSTER]` | Tear down a cluster; omit the name to pick one |
+| `iwant auth` | Check cloud credentials and show login guidance |
+| `iwant list [CLUSTER]` | Show deployments and endpoints |
+| `iwant ssh [CLUSTER]` | Open SSH to a running cluster |
+
+Preview with `--dry-run`, skip prompts with `--yes`, choose spot capacity with
+`--spot`, or pass `HF_TOKEN` for authenticated model downloads.
+Run `iwant up --help` for all options.
+
+[Advanced usage](docs/usage.md) · [Development](docs/development.md) ·
+[Demo gallery and GIF generation](demo/README.md)
