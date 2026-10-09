@@ -18,7 +18,7 @@ if [[ -n "$requested_clip" ]]; then
   fi
 fi
 
-for tool in vhs ttyd ffmpeg ffprobe chromium python flock; do
+for tool in vhs ttyd ffmpeg ffprobe chromium python flock curl; do
   command -v "$tool" >/dev/null || { echo "Missing $tool; rebuild the devcontainer." >&2; exit 1; }
 done
 python -c 'import sys; assert sys.prefix == sys.base_prefix, "Use system Python"; import iwant, click, questionary, requests, yaml'
@@ -32,7 +32,15 @@ if [[ "${IWANT_DEMO_LOCK_HELD:-0}" != 1 ]]; then
 fi
 
 recording_tmp=$(mktemp -d)
-trap 'rm -rf "$recording_tmp"' EXIT
+fixture_pid=""
+cleanup() {
+  if [[ -n "$fixture_pid" ]]; then
+    kill "$fixture_pid" 2>/dev/null || true
+    wait "$fixture_pid" 2>/dev/null || true
+  fi
+  rm -rf "$recording_tmp"
+}
+trap cleanup EXIT
 export IWANT_DEMO_PYTHON="$(command -v python)"
 export IWANT_DEMO_ROOT="$repo_root"
 cat > "$recording_tmp/iwant" <<'SH'
@@ -55,6 +63,24 @@ for group in "${groups[@]}"; do
     export IWANT_DEMO_SCENE="$clip"
     export IWANT_DEMO_STATE="$recording_tmp/state.json"
     rm -f "$IWANT_DEMO_STATE"
+    if [[ "$clip" == quickstart ]]; then
+      python -m demo.chat_fixture "$IWANT_DEMO_STATE" "$recording_tmp/chat-url" &
+      fixture_pid=$!
+      python - "$recording_tmp/chat-url" <<'PY'
+import sys
+import time
+from pathlib import Path
+url_path = Path(sys.argv[1])
+for _ in range(100):
+    if url_path.exists():
+        break
+    time.sleep(0.1)
+else:
+    raise SystemExit("Chat fixture failed to start")
+PY
+      export OPENAI_BASE_URL="$(cat "$recording_tmp/chat-url")"
+      export OPENAI_API_KEY="$(python -c 'from demo.simulator import DEMO_KEY; print(DEMO_KEY)')"
+    fi
     echo "Recording $group/$clip"
     # Render the video first. A two-pass GIF palette avoids buffering every
     # square frame in memory, which VHS's simultaneous GIF export would do.
@@ -71,5 +97,12 @@ for group in "${groups[@]}"; do
       [[ -s "$output" ]] || { echo "Missing output: $output" >&2; exit 1; }
       ffmpeg -v error -i "$output" -f null -
     done
+    if [[ -n "$fixture_pid" ]]; then
+      kill "$fixture_pid"
+      wait "$fixture_pid" 2>/dev/null || true
+      fixture_pid=""
+      rm -f "$recording_tmp/chat-url"
+      unset OPENAI_BASE_URL OPENAI_API_KEY
+    fi
   done
 done

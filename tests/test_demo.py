@@ -11,7 +11,7 @@ import pytest
 import requests
 from click.testing import CliRunner
 
-from demo import simulator
+from demo import chat_fixture, simulator
 from demo.records import DemoRequest, DemoTask, LaunchPlan, LaunchResult, Resources
 from iwant import cli, registry
 from iwant.records import ClusterRecord
@@ -208,3 +208,32 @@ def test_output_write_reports_consumed_input_length() -> None:
     text = "Server: http://192.0.2.10:8000/v1"
     assert output.write(text) == len(text)
     assert "Endpoint" in stream.getvalue()
+
+
+def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory) -> None:
+    fixture = demo("quickstart")
+    request = {
+        "model": "openai/gpt-oss-20b",
+        "messages": [{"role": "user", "content": "Write a haiku about GPUs."}],
+    }
+    assert chat_fixture.completion(request, fixture.state_path)[0] == 503
+    runner = CliRunner()
+    result = runner.invoke(cli.main, ["up", "gpt-oss-20b", "--yes", "--infra", "gcp"])
+    assert result.exit_code == 0, result.output
+    status, response = chat_fixture.completion(request, fixture.state_path)
+    assert status == 200
+    assert response["choices"] == [
+        {"message": {"role": "assistant", "content": chat_fixture.ANSWER}, "finish_reason": "stop"}
+    ]
+    result = runner.invoke(cli.main, ["down", fixture.rows()[0].name])
+    assert result.exit_code == 0, result.output
+    assert chat_fixture.completion(request, fixture.state_path)[0] == 503
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, {"model": "another-model"}, {"model": "openai/gpt-oss-20b", "messages": []}],
+)
+def test_chat_fixture_rejects_requests_outside_recorded_demo(body: object, demo: DemoFactory) -> None:
+    fixture = demo("quickstart")
+    assert chat_fixture.completion(body, fixture.state_path)[0] == 400

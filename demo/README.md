@@ -1,12 +1,13 @@
 # iwant demos
 
-Thirteen wider terminal walkthroughs with larger text, colored prompts and results, and a rounded
-terminal frame. Six clips cover CLI functionality; seven show interactive model launches.
+Fourteen terminal walkthroughs with colored prompts and results and a rounded
+terminal frame. Seven clips cover CLI functionality; seven show interactive model launches.
 
 ## Functionality
 
 | Flow | GIF | MP4 |
 | --- | --- | --- |
+| Launch, send a prompt, receive an answer, and tear down | [Watch](functionality/quickstart.gif) | [Download](functionality/quickstart.mp4) |
 | Pick and launch DeepSeek V4 Flash | [Watch](functionality/up.gif) | [Download](functionality/up.mp4) |
 | Preview a launch without spending | [Watch](functionality/dry-run.gif) | [Download](functionality/dry-run.mp4) |
 | Check cloud auth and see setup guidance | [Watch](functionality/auth.gif) | [Download](functionality/auth.mp4) |
@@ -14,7 +15,13 @@ terminal frame. Six clips cover CLI functionality; seven show interactive model 
 | Select a cluster for SSH | [Watch](functionality/ssh.gif) | [Download](functionality/ssh.mp4) |
 | Tear down a model and check the list | [Watch](functionality/down.gif) | [Download](functionality/down.mp4) |
 
-![Pick and launch a model](functionality/up.gif)
+![Launch, prompt, answer, and teardown](functionality/quickstart.gif)
+
+The quickstart clip uses the real CLI and real curl against a loopback-only HTTP
+fixture. The answer is a fixed sample, not model inference. The renderer supplies
+the demo URL and key in the shell environment before the request, and the fixture
+only responds while the GPT OSS demo cluster exists. Use your real launch's URL
+and key to reproduce the commands against a model server.
 
 ## Model launches
 
@@ -39,10 +46,11 @@ Then, from the repository root:
 
 ```bash
 sudo uv pip install --system -e '.[dev]'
-bash demo/render.sh                 # all 13 demos, GIF + MP4
-bash demo/render.sh functionality   # six functionality clips
+bash demo/render.sh                 # all 14 demos, GIF + MP4
+bash demo/render.sh functionality   # seven functionality clips
 bash demo/render.sh models          # seven interactive model launches
 bash demo/render.sh functionality up # one clip for a quick preview
+bash demo/render.sh functionality quickstart # launch through first answer and teardown
 ```
 
 The renderer uses system Python. It checks dependencies, creates a temporary
@@ -50,7 +58,9 @@ The renderer uses system Python. It checks dependencies, creates a temporary
 Fixture state persists between commands within a clip and resets between clips. The wrapper is removed
 when rendering finishes. The installed `iwant` command is unaffected.
 
-`common.tape` shares the 1440×1080 canvas, 44px font, rounded frame, theme, and timing. `session.tape`
+`common.tape` shares the 1440×1080 canvas, 44px font, rounded frame, theme, and timing.
+The quickstart overrides height to 900px, font size to 32px, and typing speed to fit
+the complete curl request. `session.tape`
 sets up the colored shell prompt behind the scenes. Each clip has its own editable VHS tape and both
 outputs are versioned alongside it. Recording-only styling accents the actual CLI output and displays
 the wide listing table as compact cards. Launches finish on a dedicated endpoint screen with shortened
