@@ -42,6 +42,4 @@ testpaths = ["tests"]
 
 [tool.basedpyright]
 include = ["iwant", "demo", "tests"]
-typeCheckingMode = "standard"
-strict = ["demo"]
 pythonVersion = "3.10"
