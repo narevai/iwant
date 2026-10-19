@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "baseBranchPatterns": [
+    "main"
+  ],
+  "enabledManagers": [
+    "pep621",
+    "github-actions",
+    "devcontainer",
+    "dockerfile"
+  ],
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "platformAutomerge": true,
+  "rebaseWhen": "behind-base-branch",
+  "prConcurrentLimit": 3,
+  "packageRules": [
+    {
+      "description": "Raise Python dependency minimums so in-range updates also get tested.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Keep Click compatible with SkyPilot and Python 3.9.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "click"
+      ],
+      "allowedVersions": "<8.2.0"
+    },
+    {
+      "description": "Preserve the basedpyright ceiling for Python 3.9 only.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "basedpyright"
+      ],
+      "matchCurrentValue": "/<1\\.40/",
+      "allowedVersions": "<1.40"
+    },
+    {
+      "description": "Python support changes require a deliberate CI and installer update.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "enabled": false
+    }
+  ]
+}

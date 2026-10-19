@@ -56,6 +56,52 @@ The quickstart runs curl against a loopback-only fixture with a fixed sample ans
 The renderer checks that both formats decode successfully. See the
 [demo guide](../demo/README.md#regenerate) for tools, recording details, and the full gallery.
 
+## Dependency updates
+
+[Renovate](https://docs.renovatebot.com/) uses [`renovate.json`](../renovate.json)
+to open pull requests targeting `main` for Python packages, GitHub Actions,
+devcontainer features, and Docker images. Python minimum versions are bumped
+so updates already inside an allowed range still produce a PR and run CI.
+Patch, minor, and major updates are eligible for squash automerge when all
+required checks pass. Failing updates stay open for investigation. Renovate
+rebases branches when `main` changes, so each update is checked against the
+latest merged code.
+
+### One-time GitHub setup
+
+1. Install the [Renovate GitHub App](https://github.com/apps/renovate) and grant
+   it access to `narevai/iwant`. Enable repository Issues for its Dependency Dashboard.
+2. Merge this configuration and CI workflow into `main`.
+3. In **Settings → General → Pull Requests**, enable **Allow squash merging**
+   and **Allow auto-merge**.
+4. Protect `main` with a branch rule or ruleset requiring pull requests and the
+   **CI passed** check from GitHub Actions. Require branches to be up to date
+   before merging. Run CI once if the check is not yet available in the selector.
+   Do this before allowing Renovate to process updates: platform automerge relies
+   on required checks to prevent an early merge.
+5. Required human approvals will also block bot PRs. For unattended merges,
+   the applicable rules must permit Renovate PRs to merge without human approval;
+   do not give it a bypass of required CI checks.
+
+`CI passed` requires lint/type checks, formatting, and the entire Python test
+matrix to succeed; failures, cancellations, and skipped jobs fail the gate.
+Add any future mandatory CI jobs to its `needs` list.
+
+The Click `<8.2.0` and Python 3.9 basedpyright `<1.40` ceilings are preserved.
+Changing supported Python versions requires updating the CI matrix and installer
+alongside package metadata. A newest upstream version that drops a supported
+Python version can fail CI and remain unmerged; a green PR is required for every
+update. This repository has no Python lockfile, so Renovate tracks direct
+requirements rather than providing a complete transitive dependency lock.
+
+Dependency PRs can auto-merge throughout the day. At **00:00 UTC daily**, the
+release workflow batches new changes into one patch-version PR that updates
+`project.version` in `pyproject.toml`, the only version source. It explicitly
+runs CI for the version PR, merges it when required checks pass, runs CI on
+main, and publishes. Days without changes are skipped. No daily manual bump or
+additional secret is needed. Enable Actions PR creation as described in the
+[release guide](releases.md).
+
 ## Releases
 
 See the [release guide](releases.md) for how the Makefile, GitHub workflow, and

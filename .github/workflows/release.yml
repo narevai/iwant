@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: read
@@ -12,18 +17,45 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'workflow_dispatch' &&
+        github.event.workflow_run.actor.login == 'github-actions[bot]' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      checks: read
+      actions: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: make install
+      - name: Prepare daily version
+        if: github.event_name != 'workflow_run'
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/prepare_release.py
+      - name: Continue after explicitly dispatched CI
+        if: github.event_name == 'workflow_run'
+        id: finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python scripts/prepare_release.py --finish-ci
       - name: Release
+        if: steps.prepare.outputs.action == 'release' || steps.finish.outputs.action == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: make release
