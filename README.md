@@ -166,4 +166,5 @@ Preview with `--dry-run`, skip prompts with `--yes`, choose spot capacity with
 Run `iwant up --help` for all options.
 
 [Advanced usage](docs/usage.md) · [Development](docs/development.md) ·
+[Release guide](docs/releases.md) ·
 [Demo gallery and GIF generation](demo/README.md)
