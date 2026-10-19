@@ -1,303 +1,325 @@
-import os
 import sys
-from unittest.mock import MagicMock
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
 
-import yaml
+import pytest
+import requests
 
 from iwant import launch as launch_mod
+from iwant import registry, tui
+from iwant.spinner import Spinner
+from tests.fixtures import FakeSky, Http, JobStatus, LaunchCall, Prompts, forbidden
+
+
+@dataclass
+class LaunchCase:
+    monkeypatch: pytest.MonkeyPatch
+    recipes: Path
+    sky: FakeSky
+    prompts: Prompts
+    http: Http
+    spinners: list[Spinner] = field(default_factory=list)
+    sleeps: list[float] = field(default_factory=list)
+
+    def run(
+        self,
+        model: Optional[str] = "modelA",
+        *,
+        interactive: bool = False,
+        idle_minutes: Optional[int] = None,
+        autostop_given: bool = False,
+        dry_run: bool = False,
+        infra: Optional[str] = None,
+        use_spot: bool = False,
+    ) -> int:
+        self.monkeypatch.setattr(sys.stdin, "isatty", lambda: interactive)
+        return launch_mod.launch(
+            model,
+            idle_minutes=idle_minutes,
+            autostop_given=autostop_given,
+            dry_run=dry_run,
+            yes=not interactive,
+            infra=infra,
+            api_key="test-key",
+            use_spot=use_spot,
+        )
+
+    @property
+    def submission(self) -> LaunchCall:
+        assert len(self.sky.launch_calls) == 1
+        return self.sky.launch_calls[0]
+
+
+@pytest.fixture
+def launch_case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LaunchCase:
+    recipes = tmp_path / "recipes"
+    model = recipes / "modelA"
+    model.mkdir(parents=True)
+    _ = (model / "v1.yaml").write_text("resources: {}\n")
+    monkeypatch.setattr(registry, "RECIPES_DIR", recipes)
+    sky = FakeSky()
+    sky.check.response = {"default": {"gcp": [], "aws": []}}
+    sky.endpoint_result = {8000: "1.2.3.4:8000"}
+    prompts = Prompts()
+    http = Http()
+    case = LaunchCase(monkeypatch, recipes, sky, prompts, http)
+
+    def spinner(message: str) -> Spinner:
+        instance = Spinner(message)
+        case.spinners.append(instance)
+        return instance
+
+    def sleep(seconds: float) -> None:
+        case.sleeps.append(seconds)
+
+    monkeypatch.setitem(sys.modules, "sky", sky)
+    monkeypatch.setattr(tui, "pick_model", prompts.pick_model)
+    monkeypatch.setattr(tui, "pick_infra", prompts.pick_infra)
+    monkeypatch.setattr(tui, "pick_spot", prompts.pick_spot)
+    monkeypatch.setattr(tui, "pick_autostop", prompts.pick_autostop)
+    monkeypatch.setattr(tui, "pick_dry_run", prompts.pick_dry_run)
+    monkeypatch.setattr(launch_mod, "Spinner", spinner)
+    monkeypatch.setattr(requests, "get", http.get)
+    monkeypatch.setattr(time, "sleep", sleep)
+    return case
+
+
+def test_progress_no_job_id_skips_log_lookup(launch_case: LaunchCase) -> None:
+    launch_case.sky.job_id = None
+    assert launch_case.run() == 0
+    assert launch_case.sky.log_calls == []
+
+
+def test_progress_displays_last_log_segment(launch_case: LaunchCase) -> None:
+    launch_case.sky.logs = ["line one\n", "line two\n"]
+    assert launch_case.run() == 0
+    assert launch_case.spinners[-1].message.startswith("line two (")
+
+
+def test_progress_splits_carriage_return_progress_bars(launch_case: LaunchCase) -> None:
+    launch_case.sky.logs = ["Capturing: 1%\rCapturing: 50%\rCapturing: 99%"]
+    assert launch_case.run() == 0
+    assert launch_case.spinners[-1].message.startswith("Capturing: 99% (")
+
+
+def test_progress_truncates_long_lines(launch_case: LaunchCase) -> None:
+    launch_case.sky.logs = ["x" * 200]
+    assert launch_case.run() == 0
+    assert launch_case.spinners[-1].message.startswith("x" * 97 + "... (")
+
 
-# --- _tail_progress_line ---
+def test_progress_log_exception_does_not_abort_launch(launch_case: LaunchCase) -> None:
+    launch_case.sky.logs_error = RuntimeError("boom")
+    assert launch_case.run() == 0
+    assert launch_case.spinners[-1].message.startswith("Waiting for the server to respond...")
 
 
-def test_tail_progress_line_no_job_id_skips_sky_entirely():
-    assert launch_mod._tail_progress_line("cluster", None) is None
+def test_progress_empty_log_uses_waiting_message(launch_case: LaunchCase) -> None:
+    launch_case.sky.logs = ["", None, "  \n"]
+    assert launch_case.run() == 0
+    assert launch_case.spinners[-1].message.startswith("Waiting for the server to respond...")
 
 
-def test_tail_progress_line_returns_last_segment(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.tail_logs.return_value = iter(["line one\n", "line two\n"])
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    assert launch_mod._tail_progress_line("cluster", 1) == "line two"
+def test_autostop_explicit_value_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True, idle_minutes=45) == 0
+    assert launch_case.submission.idle_minutes == 45
+    assert "autostop" not in launch_case.prompts.calls
 
 
-def test_tail_progress_line_splits_on_carriage_return_progress_bars(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.tail_logs.return_value = iter(["Capturing: 1%\rCapturing: 50%\rCapturing: 99%"])
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    assert launch_mod._tail_progress_line("cluster", 1) == "Capturing: 99%"
+def test_no_autostop_flag_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True, autostop_given=True) == 0
+    assert launch_case.submission.idle_minutes is None
+    assert launch_case.submission.down is False
+    assert "autostop" not in launch_case.prompts.calls
 
 
-def test_tail_progress_line_truncates_long_lines(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.tail_logs.return_value = iter(["x" * 200])
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    result = launch_mod._tail_progress_line("cluster", 1)
-    assert result is not None
-    assert len(result) == 100
-    assert result.endswith("...")
+def test_autostop_non_interactive_defaults(launch_case: LaunchCase) -> None:
+    assert launch_case.run() == 0
+    assert launch_case.submission.idle_minutes == launch_mod.DEFAULT_IDLE_MINUTES
+    assert launch_case.submission.down is True
+    assert launch_case.prompts.calls == []
 
 
-def test_tail_progress_line_none_on_exception(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.tail_logs.side_effect = RuntimeError("boom")
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    assert launch_mod._tail_progress_line("cluster", 1) is None
+def test_autostop_picker_disables_autostop(launch_case: LaunchCase) -> None:
+    launch_case.prompts.autostop = -1
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.idle_minutes is None
+    assert launch_case.submission.down is False
 
 
-def test_tail_progress_line_none_on_empty_log(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.tail_logs.return_value = iter(["", None, "  \n"])
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    assert launch_mod._tail_progress_line("cluster", 1) is None
+def test_autostop_picker_value_is_submitted(launch_case: LaunchCase) -> None:
+    launch_case.prompts.autostop = 90
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.idle_minutes == 90
 
 
-# --- _resolve_autostop ---
+def test_autostop_picker_cancel_prevents_submission(launch_case: LaunchCase) -> None:
+    launch_case.prompts.autostop = None
+    assert launch_case.run(interactive=True) == 1
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_autostop_explicit_value_wins(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_autostop", lambda: (_ for _ in ()).throw(AssertionError))
-    assert launch_mod._resolve_autostop(45, False, True) == 45
+def test_model_explicit_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.task.recipe.envs.IWANT_RECIPE == "modelA@v1"
+    assert "model" not in launch_case.prompts.calls
 
 
-def test_resolve_autostop_no_autostop_flag_wins(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_autostop", lambda: (_ for _ in ()).throw(AssertionError))
-    assert launch_mod._resolve_autostop(None, True, True) is None
+def test_model_missing_non_interactive_fails(
+    launch_case: LaunchCase, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert launch_case.run(model=None) == 1
+    assert "No model given" in capsys.readouterr().out
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_autostop_non_interactive_defaults():
-    assert launch_mod._resolve_autostop(None, False, False) == launch_mod.DEFAULT_IDLE_MINUTES
+def test_model_missing_recipes_fails(launch_case: LaunchCase, capsys: pytest.CaptureFixture[str]) -> None:
+    (launch_case.recipes / "modelA" / "v1.yaml").unlink()
+    assert launch_case.run(model=None, interactive=True) == 1
+    assert "No model configs found" in capsys.readouterr().out
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_autostop_picker_disable_maps_to_none(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_autostop", lambda: -1)
-    assert launch_mod._resolve_autostop(None, False, True) is None
+def test_model_picker_selection_is_submitted(launch_case: LaunchCase) -> None:
+    assert launch_case.run(model=None, interactive=True) == 0
+    assert "model" in launch_case.prompts.calls
+    assert launch_case.submission.task.recipe.envs.IWANT_RECIPE == "modelA@v1"
 
 
-def test_resolve_autostop_picker_value(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_autostop", lambda: 90)
-    assert launch_mod._resolve_autostop(None, False, True) == 90
+def test_model_picker_cancel_prevents_submission(launch_case: LaunchCase) -> None:
+    launch_case.prompts.model = None
+    assert launch_case.run(model=None, interactive=True) == 1
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_autostop_picker_cancel(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_autostop", lambda: None)
-    assert launch_mod._resolve_autostop(None, False, True) is launch_mod._CANCELLED
+def test_infra_explicit_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True, infra="aws") == 0
+    assert launch_case.submission.task.recipe.resources.infra == "aws"
+    assert "infra" not in launch_case.prompts.calls
 
 
-# --- _resolve_model ---
+def test_infra_non_interactive_uses_recipe(launch_case: LaunchCase) -> None:
+    _ = (launch_case.recipes / "modelA" / "v1.yaml").write_text("resources: {infra: gcp}\n")
+    assert launch_case.run() == 0
+    assert launch_case.submission.task.recipe.resources.infra == "gcp"
+    assert "infra" not in launch_case.prompts.calls
 
 
-def test_resolve_model_explicit():
-    assert launch_mod._resolve_model("gpt-oss-20b", True) == "gpt-oss-20b"
+def test_infra_unconfigured_prevents_submission(
+    launch_case: LaunchCase, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launch_case.sky.check.response = {}
+    assert launch_case.run(interactive=True) == 1
+    assert "No cloud is set up" in capsys.readouterr().out
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_model_non_interactive_no_model():
-    assert launch_mod._resolve_model(None, False) is launch_mod._CANCELLED
+def test_infra_picker_selection_is_submitted(launch_case: LaunchCase) -> None:
+    # Only GCP is currently enabled by iwant, even if the SDK reports more clouds.
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.task.recipe.resources.infra == "gcp"
+    assert "infra" in launch_case.prompts.calls
 
 
-def test_resolve_model_no_configs(monkeypatch):
-    monkeypatch.setattr(launch_mod, "list_models", lambda: [])
-    assert launch_mod._resolve_model(None, True) is launch_mod._CANCELLED
+def test_infra_picker_cancel_prevents_submission(launch_case: LaunchCase) -> None:
+    launch_case.prompts.infra = None
+    assert launch_case.run(interactive=True) == 1
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_model_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod, "list_models", lambda: ["a", "b"])
-    monkeypatch.setattr(launch_mod.tui, "pick_model", lambda models: "b")
-    assert launch_mod._resolve_model(None, True) == "b"
+def test_dry_run_explicit_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True, dry_run=True) == 0
+    assert launch_case.submission.dry_run is True
+    assert launch_case.sky.stream_calls == 0
+    assert launch_case.sky.endpoint_calls == []
+    assert "dry_run" not in launch_case.prompts.calls
 
 
-def test_resolve_model_picker_cancel(monkeypatch):
-    monkeypatch.setattr(launch_mod, "list_models", lambda: ["a"])
-    monkeypatch.setattr(launch_mod.tui, "pick_model", lambda models: None)
-    assert launch_mod._resolve_model(None, True) is launch_mod._CANCELLED
+def test_dry_run_non_interactive_defaults_to_launch(launch_case: LaunchCase) -> None:
+    assert launch_case.run() == 0
+    assert launch_case.submission.dry_run is False
 
 
-# --- _resolve_infra ---
+def test_dry_run_picker_selection_is_submitted(launch_case: LaunchCase) -> None:
+    launch_case.prompts.dry_run = True
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.dry_run is True
+    assert launch_case.sky.stream_calls == 0
 
 
-def test_resolve_infra_explicit():
-    assert launch_mod._resolve_infra("gcp", True) == "gcp"
+def test_dry_run_picker_cancel_prevents_submission(launch_case: LaunchCase) -> None:
+    launch_case.prompts.dry_run = None
+    assert launch_case.run(interactive=True) == 1
+    assert launch_case.sky.launch_calls == []
 
 
-def test_resolve_infra_non_interactive_falls_back_to_none():
-    assert launch_mod._resolve_infra(None, False) is None
+def test_spot_explicit_skips_picker(launch_case: LaunchCase) -> None:
+    assert launch_case.run(interactive=True, use_spot=True) == 0
+    assert launch_case.submission.task.recipe.resources.use_spot is True
+    assert "spot" not in launch_case.prompts.calls
 
 
-def test_resolve_infra_no_enabled_cancels(monkeypatch):
-    monkeypatch.setattr(launch_mod.infra_mod, "enabled_infra", lambda: [])
-    assert launch_mod._resolve_infra(None, True) is launch_mod._CANCELLED
+def test_spot_non_interactive_defaults(launch_case: LaunchCase) -> None:
+    assert launch_case.run() == 0
+    assert launch_case.submission.task.recipe.resources.use_spot is None
 
 
-def test_resolve_infra_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod.infra_mod, "enabled_infra", lambda: ["gcp", "aws"])
-    monkeypatch.setattr(launch_mod.tui, "pick_infra", lambda clouds: "aws")
-    assert launch_mod._resolve_infra(None, True) == "aws"
+def test_spot_picker_selection_is_submitted(launch_case: LaunchCase) -> None:
+    launch_case.prompts.spot = True
+    assert launch_case.run(interactive=True) == 0
+    assert launch_case.submission.task.recipe.resources.use_spot is True
 
 
-def test_resolve_infra_picker_cancel(monkeypatch):
-    monkeypatch.setattr(launch_mod.infra_mod, "enabled_infra", lambda: ["gcp"])
-    monkeypatch.setattr(launch_mod.tui, "pick_infra", lambda clouds: None)
-    assert launch_mod._resolve_infra(None, True) is launch_mod._CANCELLED
+def test_spot_picker_cancel_prevents_submission(launch_case: LaunchCase) -> None:
+    launch_case.prompts.spot = None
+    assert launch_case.run(interactive=True) == 1
+    assert launch_case.sky.launch_calls == []
 
 
-# --- _resolve_dry_run ---
+def test_running_job_keeps_polling(launch_case: LaunchCase) -> None:
+    launch_case.http.failures = 1
+    assert launch_case.run() == 0
+    assert len(launch_case.sky.job_calls) == 1
+    assert launch_case.http.calls == 2
+    assert launch_case.sleeps == [launch_mod.HEALTH_CHECK_INTERVAL]
 
 
-def test_resolve_dry_run_explicit_true_skips_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_dry_run", lambda: (_ for _ in ()).throw(AssertionError))
-    assert launch_mod._resolve_dry_run(True, True) is True
+def test_failed_job_stops_polling(launch_case: LaunchCase, capsys: pytest.CaptureFixture[str]) -> None:
+    launch_case.sky.job_state = JobStatus.FAILED
+    launch_case.http.failures = 1
+    assert launch_case.run() == 1
+    assert "server job ended (FAILED)" in capsys.readouterr().out
+    assert launch_case.http.calls == 1
+    assert launch_case.sleeps == []
 
 
-def test_resolve_dry_run_non_interactive():
-    assert launch_mod._resolve_dry_run(False, False) is False
+def test_no_job_id_skips_status_lookup(launch_case: LaunchCase) -> None:
+    launch_case.sky.job_id = None
+    launch_case.http.failures = 1
+    assert launch_case.run() == 0
+    assert launch_case.sky.job_calls == []
 
 
-def test_resolve_dry_run_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_dry_run", lambda: True)
-    assert launch_mod._resolve_dry_run(False, True) is True
+def test_job_status_exception_does_not_abort_polling(launch_case: LaunchCase) -> None:
+    launch_case.sky.job_error = RuntimeError("boom")
+    launch_case.http.failures = 1
+    assert launch_case.run() == 0
+    assert len(launch_case.sky.job_calls) == 1
 
 
-def test_resolve_dry_run_picker_cancel(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_dry_run", lambda: None)
-    assert launch_mod._resolve_dry_run(False, True) is launch_mod._CANCELLED
+def test_failed_job_does_not_sleep(launch_case: LaunchCase, monkeypatch: pytest.MonkeyPatch) -> None:
+    launch_case.sky.job_state = JobStatus.FAILED
+    launch_case.http.failures = 1
+    monkeypatch.setattr(time, "sleep", forbidden)
+    assert launch_case.run() == 1
 
 
-# --- _resolve_spot ---
-
-
-def test_resolve_spot_explicit_true_skips_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_spot", lambda: (_ for _ in ()).throw(AssertionError))
-    assert launch_mod._resolve_spot(True, True) is True
-
-
-def test_resolve_spot_non_interactive():
-    assert launch_mod._resolve_spot(False, False) is False
-
-
-def test_resolve_spot_picker(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_spot", lambda: True)
-    assert launch_mod._resolve_spot(False, True) is True
-
-
-def test_resolve_spot_picker_cancel(monkeypatch):
-    monkeypatch.setattr(launch_mod.tui, "pick_spot", lambda: None)
-    assert launch_mod._resolve_spot(False, True) is launch_mod._CANCELLED
-
-
-# --- _materialize_task_yaml ---
-
-
-def test_materialize_task_yaml_no_overrides_returns_source(tmp_path):
-    src = tmp_path / "server.yaml"
-    src.write_text("resources:\n  infra: gcp\n")
-    result = launch_mod._materialize_task_yaml(src, infra=None, api_key=None, use_spot=False)
-    assert result == str(src)
-
-
-def test_materialize_task_yaml_overrides_infra_and_key(tmp_path):
-    src = tmp_path / "server.yaml"
-    src.write_text("resources:\n  infra: gcp\nenvs:\n  VLLM_API_KEY: placeholder\n")
-
-    result_path = launch_mod._materialize_task_yaml(src, infra="aws", api_key="secret123", use_spot=False)
-    try:
-        assert result_path != str(src)
-        with open(result_path) as f:
-            data = yaml.safe_load(f)
-        assert data["resources"]["infra"] == "aws"
-        assert data["envs"]["VLLM_API_KEY"] == "secret123"
-        assert "use_spot" not in data["resources"]
-        # the source recipe itself must stay untouched
-        assert "secret123" not in src.read_text()
-    finally:
-        os.unlink(result_path)
-
-
-def test_materialize_task_yaml_overrides_use_spot(tmp_path):
-    src = tmp_path / "server.yaml"
-    src.write_text("resources:\n  infra: gcp\n")
-
-    result_path = launch_mod._materialize_task_yaml(src, infra=None, api_key=None, use_spot=True)
-    try:
-        assert result_path != str(src)
-        with open(result_path) as f:
-            data = yaml.safe_load(f)
-        assert data["resources"]["use_spot"] is True
-    finally:
-        os.unlink(result_path)
-
-
-def test_materialize_task_yaml_sets_recipe_env(tmp_path):
-    src = tmp_path / "v2.yaml"
-    src.write_text("resources:\n  infra: gcp\n")
-
-    result_path = launch_mod._materialize_task_yaml(
-        src, infra=None, api_key=None, use_spot=False, recipe="modelA@v2"
-    )
-    try:
-        assert result_path != str(src)
-        with open(result_path) as f:
-            data = yaml.safe_load(f)
-        assert data["envs"]["IWANT_RECIPE"] == "modelA@v2"
-    finally:
-        os.unlink(result_path)
-
-
-# --- _job_terminal_status / _wait_until_healthy ---
-
-
-def _fake_job_status(monkeypatch, value):
-    fake_sky = MagicMock()
-    status = MagicMock()
-    status.value = value
-    fake_sky.job_status.return_value = {1: status}
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    fake_sky.get.side_effect = lambda v: v
-    return fake_sky
-
-
-def test_job_terminal_status_running_is_none(monkeypatch):
-    _fake_job_status(monkeypatch, "RUNNING")
-    assert launch_mod._job_terminal_status("cluster", 1) is None
-
-
-def test_job_terminal_status_failed(monkeypatch):
-    _fake_job_status(monkeypatch, "FAILED")
-    assert launch_mod._job_terminal_status("cluster", 1) == "FAILED"
-
-
-def test_job_terminal_status_no_job_id():
-    assert launch_mod._job_terminal_status("cluster", None) is None
-
-
-def test_job_terminal_status_none_on_exception(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.job_status.side_effect = RuntimeError("boom")
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    assert launch_mod._job_terminal_status("cluster", 1) is None
-
-
-def test_wait_until_healthy_stops_when_job_failed(monkeypatch):
-    monkeypatch.setattr(launch_mod, "_tail_progress_line", lambda c, j: None)
-    monkeypatch.setattr(launch_mod, "_job_terminal_status", lambda c, j: "FAILED")
-    monkeypatch.setattr(
-        launch_mod.requests, "get", MagicMock(side_effect=launch_mod.requests.ConnectionError())
-    )
-    monkeypatch.setattr(launch_mod.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError))
-
-    healthy, _, job_status = launch_mod._wait_until_healthy("1.2.3.4:8000", "k", MagicMock(), "cluster", 1)
-    assert healthy is False
-    assert job_status == "FAILED"
-
-
-# --- _run_launch ---
-
-
-def test_run_launch_stops_on_launch_failure(monkeypatch):
-    fake_sky = MagicMock()
-    fake_sky.stream_and_get.side_effect = RuntimeError("quota exceeded")
-    monkeypatch.setitem(sys.modules, "sky", fake_sky)
-    endpoint = MagicMock()
-    monkeypatch.setattr(launch_mod.sky_wrap, "endpoint", endpoint)
-
-    code = launch_mod._run_launch(MagicMock(), "iwant-a-v1-abc123", 30, False, False, "k", False, "a@v1")
-    assert code == 1
-    endpoint.assert_not_called()
+def test_launch_failure_stops_before_endpoint_lookup(
+    launch_case: LaunchCase, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launch_case.sky.stream_error = RuntimeError("quota exceeded")
+    assert launch_case.run() == 1
+    assert "quota exceeded" in capsys.readouterr().out
+    assert launch_case.sky.endpoint_calls == []

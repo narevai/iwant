@@ -5,14 +5,15 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import NoReturn, Protocol
+from typing import NoReturn, Optional, Protocol
 
 import pytest
 import requests
 from click.testing import CliRunner
+from pydantic import ValidationError
 
 from demo import chat_fixture, simulator
-from demo.records import DemoRequest, DemoTask, LaunchPlan, LaunchResult, Resources
+from demo.records import DemoRequest, DemoState, DemoTask, LaunchPlan, LaunchResult, Resources
 from iwant import cli, registry
 from iwant.records import ClusterRecord
 
@@ -23,7 +24,7 @@ class DemoFactory(Protocol):
 
 @pytest.fixture
 def demo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> DemoFactory:
-    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+    def forbidden(*_args: object, **_kwargs: object) -> NoReturn:
         raise AssertionError("The recording attempted external I/O")
 
     monkeypatch.setattr(subprocess, "run", forbidden)
@@ -56,6 +57,23 @@ def test_demo_launch_uses_real_recipe_and_cli(model: str, demo: DemoFactory) -> 
     assert sky.simulator is fixture
 
 
+@pytest.mark.parametrize("supplied_key", [None, "user-supplied-api-key"])
+def test_launch_prints_plaintext_api_key_but_not_hf_token(
+    demo: DemoFactory, supplied_key: Optional[str]
+) -> None:
+    _ = demo()
+    hf_token = "private-huggingface-token"
+    args = ["up", "gpt-oss-20b", "--yes", "--infra", "gcp", "--hf-token", hf_token]
+    if supplied_key is not None:
+        args.extend(["--api-key", supplied_key])
+    result = CliRunner().invoke(cli.main, args)
+    assert result.exit_code == 0, result.output
+    expected_key = supplied_key if supplied_key is not None else simulator.DEMO_KEY
+    assert f"API key (save this now): {expected_key}" in result.output
+    assert f"API key: {expected_key}" in result.output
+    assert hf_token not in result.output
+
+
 def test_demo_dry_run_does_not_create_cluster(demo: DemoFactory) -> None:
     fixture = demo()
     result = CliRunner().invoke(cli.main, ["up", "gpt-oss-20b", "--dry-run", "--yes"])
@@ -71,7 +89,7 @@ def test_demo_dry_run_does_not_create_cluster(demo: DemoFactory) -> None:
     "scene,expected", [("auth", "gcp: enabled"), ("auth-unconfigured", "gcloud auth login")]
 )
 def test_demo_auth(scene: str, expected: str, demo: DemoFactory) -> None:
-    demo(scene)
+    _ = demo(scene)
     result = CliRunner().invoke(cli.main, ["auth"])
     assert result.exit_code == 0, result.output
     assert expected in result.output
@@ -105,7 +123,7 @@ def test_demo_down_persists_between_commands(demo: DemoFactory) -> None:
     assert result.exit_code == 0, result.output
     assert f"Torn down {cluster}" in result.output
     # A second process opens the same session state without reseeding it.
-    simulator.Simulator(fixture.state_path, "down", delay=0)
+    _ = simulator.Simulator(fixture.state_path, "down", delay=0)
     result = CliRunner().invoke(cli.main, ["list"])
     assert result.exit_code == 0, result.output
     assert "No clusters found." in result.output
@@ -123,8 +141,15 @@ def test_demo_entrypoint_hides_scaffolding_and_clears_hf_token(
     fixture = demo()
     monkeypatch.setenv("IWANT_DEMO_STATE", str(fixture.state_path))
     monkeypatch.setenv("HF_TOKEN", "private-test-token")
-    monkeypatch.setattr(simulator, "install", lambda *args, **kwargs: fixture)
-    monkeypatch.setattr(cli, "main", lambda **kwargs: None)
+
+    def installed_fixture(*_args: object, **_kwargs: object) -> simulator.Simulator:
+        return fixture
+
+    def command(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(simulator, "install", installed_fixture)
+    monkeypatch.setattr(cli, "main", command)
     simulator.main()
     output = capsys.readouterr().out
     assert "iwant" in output
@@ -139,8 +164,8 @@ def test_recording_status_preserves_details_in_readable_lines(demo: DemoFactory)
     stream = io.StringIO()
     styled = simulator.RecordingOutput(stream)
     for line in result.output.splitlines():
-        styled.write(line)
-        styled.write("\n")
+        _ = styled.write(line)
+        _ = styled.write("\n")
     output = re.sub(r"\x1b\[[0-9;]*m", "", stream.getvalue())
     assert "Active deployments" in output
     for row in fixture.rows():
@@ -152,13 +177,13 @@ def test_recording_status_preserves_details_in_readable_lines(demo: DemoFactory)
 
 
 def test_recording_launch_keeps_endpoint_and_recipe_on_result_screen(demo: DemoFactory) -> None:
-    demo()
+    _ = demo()
     result = CliRunner().invoke(cli.main, ["up", "step-3.7-flash-optimized", "--yes", "--infra", "gcp"])
     stream = io.StringIO()
     output = simulator.RecordingOutput(stream)
     for line in result.output.splitlines():
-        output.write(line)
-        output.write("\n")
+        _ = output.write(line)
+        _ = output.write("\n")
     rendered = re.sub(r"\x1b\[[0-9;]*m", "", stream.getvalue()).split("\033[2J\033[H")[-1]
     assert "Model ready" in rendered
     assert "Endpoint\nhttp://192.0.2.10:8000/v1" in rendered
@@ -188,7 +213,7 @@ def test_demo_request_results_keep_their_domain_types(demo: DemoFactory) -> None
     assert isinstance(plan, LaunchPlan)
     assert plan.resources.accelerators == "L4:1"
     with pytest.raises(TypeError, match="Only a model launch"):
-        sky.stream_and_get(request)
+        _ = sky.stream_and_get(request)
     launch_request = fixture.submit(task, fixture.cluster_name("gpt-oss-20b", 1), 30, True, False)
     launched = sky.stream_and_get(launch_request)
     assert isinstance(launched, LaunchResult)
@@ -197,9 +222,9 @@ def test_demo_request_results_keep_their_domain_types(demo: DemoFactory) -> None
 
 def test_invalid_yaml_resource_type_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "invalid.yaml"
-    path.write_text("envs: {}\nresources:\n  accelerators: [L4]\n")
-    with pytest.raises(ValueError, match="Expected a string for accelerators"):
-        DemoTask.from_yaml(path)
+    _ = path.write_text("envs: {}\nresources:\n  accelerators: [L4]\n")
+    with pytest.raises(ValidationError, match="resources.accelerators"):
+        _ = DemoTask.from_yaml(path)
 
 
 def test_output_write_reports_consumed_input_length() -> None:
@@ -215,6 +240,7 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
     request = {
         "model": "openai/gpt-oss-20b",
         "messages": [{"role": "user", "content": "Write a haiku about GPUs."}],
+        "max_tokens": 256,
     }
     assert chat_fixture.completion(request, fixture.state_path)[0] == 503
     runner = CliRunner()
@@ -222,6 +248,7 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
     assert result.exit_code == 0, result.output
     status, response = chat_fixture.completion(request, fixture.state_path)
     assert status == 200
+    assert "choices" in response
     assert response["choices"] == [
         {"message": {"role": "assistant", "content": chat_fixture.ANSWER}, "finish_reason": "stop"}
     ]
@@ -237,3 +264,53 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
 def test_chat_fixture_rejects_requests_outside_recorded_demo(body: object, demo: DemoFactory) -> None:
     fixture = demo("quickstart")
     assert chat_fixture.completion(body, fixture.state_path)[0] == 400
+
+
+def test_demo_submission_preserves_autostop_without_teardown(demo: DemoFactory) -> None:
+    fixture = demo()
+    task = DemoTask("gpt-oss-20b@v1", Resources("gcp", "L4:1"))
+    _ = fixture.submit(task, fixture.cluster_name("gpt-oss-20b", 1), 30, False, False)
+    row = fixture.rows()[0]
+    assert row.autostop == 30
+    assert row.to_down is False
+
+
+def test_demo_cloud_check_filters_requested_clouds(demo: DemoFactory) -> None:
+    fixture = demo()
+    check = simulator.DemoCloudCheck(fixture)
+    assert check.check(["aws"], quiet=True) == {"demo": {}}
+    assert check.check(["GCP"], quiet=True) == {"demo": {"gcp": []}}
+
+
+def test_demo_endpoints_require_a_running_cluster_and_server_port(demo: DemoFactory) -> None:
+    fixture = demo("list")
+    name = fixture.rows()[0].name
+    assert fixture.endpoints(name, 8000) == {8000: "192.0.2.10:8000"}
+    assert fixture.endpoints(name, 9000) == {}
+    assert fixture.endpoints("missing-cluster", 8000) == {}
+
+
+def test_demo_logs_and_job_status_require_a_matching_job(demo: DemoFactory) -> None:
+    fixture = demo("list")
+    sky = simulator.DemoSky(fixture)
+    name = fixture.rows()[0].name
+    assert list(sky.tail_logs(name, 1, follow=False, tail=5, preload_content=False))
+    assert list(sky.tail_logs(name, 1, follow=False, tail=0, preload_content=False)) == []
+    assert list(sky.tail_logs(name, 2, follow=False, tail=5, preload_content=False)) == []
+    assert sky.get(sky.job_status(name, [1, 2])) == {1: "RUNNING"}
+    assert sky.get(sky.job_status("missing-cluster", [1])) == {}
+
+
+@pytest.mark.parametrize("nbytes", [0, 1, 24, 32])
+def test_demo_token_source_preserves_requested_length(nbytes: int) -> None:
+    token = simulator.DemoSecrets.token_hex(nbytes)
+    assert len(token) == nbytes * 2
+    assert all(character in "0123456789abcdef" for character in token)
+
+
+@pytest.mark.parametrize("content", ["{}", '[{"name": 123, "status": "UP"}]'])
+def test_demo_state_rejects_invalid_json_shape(tmp_path: Path, content: str) -> None:
+    path = tmp_path / "state.json"
+    _ = path.write_text(content)
+    with pytest.raises(ValidationError):
+        _ = DemoState.read(path)

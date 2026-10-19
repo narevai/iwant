@@ -40,8 +40,8 @@ def main() -> None:
             "Set Height 360",
             "Set Framerate 20",
             'Set Theme {"name":"iwant","background":"#101614","foreground":"#f1efe7",'
-            '"cursor":"#8eecac","black":"#101614","brightBlack":"#101614",'
-            '"green":"#8eecac","brightGreen":"#8eecac"}',
+            + '"cursor":"#8eecac","black":"#101614","brightBlack":"#101614",'
+            + '"green":"#8eecac","brightGreen":"#8eecac"}',
             "Set Padding 100",
             "Set Margin 0",
             "Set TypingSpeed 35ms",
@@ -60,10 +60,10 @@ def main() -> None:
             lines.extend([f'Type "{model}"', "Sleep 1800ms"])
             lines.extend(["Backspace", "Sleep 15ms"] * len(model))
             lines.append("Sleep 200ms")
-        tape.write_text("\n".join(lines) + "\n")
+        _ = tape.write_text("\n".join(lines) + "\n")
         # No Enter follows a launch command: the banner only types and deletes text.
-        subprocess.run(["vhs", str(tape)], env={**os.environ, "VHS_NO_SANDBOX": "true"}, check=True)
-        subprocess.run(
+        _ = subprocess.run(["vhs", str(tape)], env={**os.environ, "VHS_NO_SANDBOX": "true"}, check=True)
+        _ = subprocess.run(
             [
                 "ffmpeg",
                 "-v",
@@ -81,7 +81,7 @@ def main() -> None:
             ],
             check=True,
         )
-        subprocess.run(
+        _ = subprocess.run(
             [
                 "ffmpeg",
                 "-v",
@@ -99,7 +99,7 @@ def main() -> None:
             ],
             check=True,
         )
-        subprocess.run(["ffmpeg", "-v", "error", "-i", str(destination), "-f", "null", "-"], check=True)
+        _ = subprocess.run(["ffmpeg", "-v", "error", "-i", str(destination), "-f", "null", "-"], check=True)
     print(f"Rendered {destination.relative_to(ROOT)} with {len(models)} available models.")
 
 

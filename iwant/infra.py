@@ -3,7 +3,8 @@ from __future__ import annotations
 import contextlib
 import io
 
-from .records import CloudStatus
+from .records import CloudCheckResult, CloudStatus
+from .sky_api import SkyCloudApi, check_clouds
 from .spinner import Spinner
 
 # Clouds iwant can launch on - each needs its SkyPilot extra in
@@ -32,22 +33,14 @@ def _fetch_enabled() -> set[str] | None:
     try:
         with Spinner("Checking cloud credentials..."):
             with contextlib.redirect_stdout(io.StringIO()):
-                raw = sky.check.check(clouds=COMPUTE_CLOUDS, quiet=True)
+                if not isinstance(sky, SkyCloudApi):
+                    raise TypeError("SkyPilot does not expose its cloud credential checker")
+                response = CloudCheckResult.model_validate(check_clouds(sky, COMPUTE_CLOUDS))
     except Exception as e:
         print(f"sky.check.check() failed: {e}")
         return None
 
-    if not isinstance(raw, dict):
-        print(f"(sky.check.check() returned unexpected shape: {raw!r})")
-        return None
-
-    enabled: set[str] = set()
-    for value in raw.values():
-        if isinstance(value, dict):
-            enabled.update(k.lower() for k in value.keys())
-        elif isinstance(value, (list, tuple, set)):
-            enabled.update(str(k).lower() for k in value)
-    return enabled
+    return response.enabled_clouds()
 
 
 def enabled_infra() -> list[str]:

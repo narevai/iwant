@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, NamedTuple, TypeVar, cast
+from typing import Generic, NamedTuple, Optional, TypeVar
 
-import yaml
+from pydantic import RootModel
+from typing_extensions import override
 
-
-def yaml_mapping(value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping):
-        raise ValueError("Expected a YAML mapping")
-    return cast(Mapping[str, object], value)
+from iwant.recipe import Recipe
+from iwant.records import ClusterRecord
 
 
-def yaml_string(value: object, field: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"Expected a string for {field}")
-    return value
+class DemoState(RootModel[list[ClusterRecord]]):
+    """Validated state shared by the recording simulator and chat fixture."""
+
+    @classmethod
+    def read(cls, path: Path) -> DemoState:
+        return cls.model_validate_json(path.read_text()) if path.exists() else cls([])
 
 
 @dataclass(frozen=True)
@@ -34,15 +33,13 @@ class DemoTask:
     @classmethod
     def from_yaml(cls, path: str | Path) -> DemoTask:
         source = Path(path)
-        data = yaml_mapping(yaml.safe_load(source.read_text()))
-        envs = yaml_mapping(data.get("envs"))
-        resources = yaml_mapping(data.get("resources"))
+        document = Recipe.from_yaml(source)
+        accelerators = document.resources.accelerators
+        if accelerators is None:
+            raise ValueError("Demo recipes require accelerators")
         return cls(
-            recipe=yaml_string(envs.get("IWANT_RECIPE", f"{source.parent.name}@{source.stem}"), "recipe"),
-            resources=Resources(
-                infra=yaml_string(resources.get("infra", "gcp"), "infra"),
-                accelerators=yaml_string(resources.get("accelerators"), "accelerators"),
-            ),
+            recipe=document.envs.IWANT_RECIPE or f"{source.parent.name}@{source.stem}",
+            resources=Resources(infra=document.resources.infra or "gcp", accelerators=accelerators),
         )
 
 
@@ -50,8 +47,9 @@ class DemoTask:
 class LaunchPlan:
     recipe: str
     resources: Resources
-    idle_minutes: int | None
+    idle_minutes: Optional[int]
 
+    @override
     def __str__(self) -> str:
         idle = f"{self.idle_minutes}m" if self.idle_minutes is not None else "disabled"
         return (

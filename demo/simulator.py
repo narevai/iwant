@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -10,15 +9,15 @@ import textwrap
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import redirect_stdout
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, Optional, Protocol, TypeVar
 
 import questionary
 import requests
 
-from demo.records import DemoRequest, DemoTask, HealthResponse, LaunchPlan, LaunchResult
+from demo.records import DemoRequest, DemoState, DemoTask, HealthResponse, LaunchPlan, LaunchResult
 from iwant import cli, launch, registry, sky_wrap, tui
 from iwant.records import CloudStatus, ClusterRecord
 
@@ -50,14 +49,14 @@ class TextStream(Protocol):
     def fileno(self) -> int: ...
 
     @property
-    def encoding(self) -> str | None: ...
+    def encoding(self) -> Optional[str]: ...
 
 
 class RecordingOutput:
     """Accent CLI output and fit wide status rows into the square recording."""
 
     def __init__(self, stream: TextStream) -> None:
-        self.stream = stream
+        self.stream: TextStream = stream
 
     def flush(self) -> None:
         self.stream.flush()
@@ -119,7 +118,7 @@ class RecordingOutput:
             text = color(textwrap.fill(text, width=46), "cyan")
         elif text.startswith(("Launch submitted", "Job ", "Connection closed")):
             text = color(text, "muted")
-        self.stream.write(text)
+        _ = self.stream.write(text)
         return original_length
 
 
@@ -171,10 +170,10 @@ def style_prompts() -> tui.SelectPrompt:
 
 class Simulator:
     def __init__(self, state_path: Path, scene: str, delay: float) -> None:
-        self.state_path = state_path
-        self.scene = scene
-        self.delay = delay
-        self.health_checks = 0
+        self.state_path: Path = state_path
+        self.scene: str = scene
+        self.delay: float = delay
+        self.health_checks: int = 0
         if not state_path.exists():
             seeded = [self.row("gpt-oss-20b")]
             if scene == "list":
@@ -185,20 +184,22 @@ class Simulator:
         time.sleep(self.delay)
 
     def save(self, rows: Sequence[ClusterRecord]) -> None:
-        # JSON dictionaries are serialization only; callers exchange records.
-        self.state_path.write_text(json.dumps([asdict(row) for row in rows]))
+        _ = self.state_path.write_text(DemoState(list(rows)).model_dump_json())
 
     def rows(self) -> list[ClusterRecord]:
-        data: object = json.loads(self.state_path.read_text())
-        if not isinstance(data, list):
-            raise ValueError("Expected a list of cluster records in demo state")
-        return [ClusterRecord.from_sdk(row) for row in cast(list[object], data)]
+        return DemoState.read(self.state_path).root
 
     @staticmethod
     def cluster_name(model: str, version: int) -> str:
         return f"iwant-{model}-v{version}-a1b2c3"
 
-    def row(self, model: str, task: DemoTask | None = None, idle_minutes: int | None = 30) -> ClusterRecord:
+    def row(
+        self,
+        model: str,
+        task: Optional[DemoTask] = None,
+        idle_minutes: Optional[int] = 30,
+        down: Optional[bool] = None,
+    ) -> ClusterRecord:
         path, version = registry.resolve_task_yaml(model)
         task = task or DemoTask.from_yaml(path)
         return ClusterRecord(
@@ -208,7 +209,7 @@ class Simulator:
             region="us-central1",
             resources_str=task.resources.accelerators,
             autostop=idle_minutes,
-            to_down=idle_minutes is not None,
+            to_down=down if down is not None else idle_minutes is not None,
             launched_at=0,
         )
 
@@ -216,7 +217,7 @@ class Simulator:
         self,
         task: DemoTask,
         cluster_name: str,
-        idle_minutes_to_autostop: int | None,
+        idle_minutes_to_autostop: Optional[int],
         down: bool,
         dryrun: bool,
     ) -> DemoRequest[LaunchPlan | LaunchResult]:
@@ -225,7 +226,7 @@ class Simulator:
             return DemoRequest(LaunchPlan(task.recipe, task.resources, idle_minutes_to_autostop))
         model = task.recipe.split("@")[0]
         rows = [row for row in self.rows() if row.name != cluster_name]
-        rows.append(self.row(model, task, idle_minutes_to_autostop))
+        rows.append(self.row(model, task, idle_minutes_to_autostop, down))
         self.save(rows)
         return DemoRequest(LaunchResult(1, cluster_name))
 
@@ -250,6 +251,8 @@ class Simulator:
 
     def endpoints(self, cluster: str, port: int) -> dict[int, str]:
         self.pause()
+        if port != 8000 or not any(row.name == cluster and row.status == "UP" for row in self.rows()):
+            return {}
         return {port: "192.0.2.10:8000"}
 
     def down(self, cluster: str) -> None:
@@ -279,11 +282,19 @@ class Simulator:
 
 class DemoCloudCheck:
     def __init__(self, simulator: Simulator) -> None:
-        self.simulator = simulator
+        self.simulator: Simulator = simulator
 
     def check(self, clouds: Sequence[str], quiet: bool = True) -> dict[str, dict[str, list[str]]]:
-        # Match SkyPilot's wire format only at its API boundary.
-        return {"demo": {status.name: [] for status in self.simulator.check() if status.enabled}}
+        requested = {name.lower() for name in clouds}
+        if not quiet:
+            print("Checking demo cloud credentials...")
+        return {
+            "demo": {
+                status.name: []
+                for status in self.simulator.check()
+                if status.enabled and status.name in requested
+            }
+        }
 
 
 T = TypeVar("T")
@@ -292,19 +303,19 @@ T = TypeVar("T")
 class DemoSky(ModuleType):
     """Explicitly typed SkyPilot test adapter, installed only in recorder processes."""
 
-    Task = DemoTask
+    Task: ClassVar[type[DemoTask]] = DemoTask
 
     def __init__(self, simulator: Simulator) -> None:
         super().__init__("sky")
-        self.simulator = simulator
-        self.check = DemoCloudCheck(simulator)
+        self.simulator: Simulator = simulator
+        self.check: DemoCloudCheck = DemoCloudCheck(simulator)
 
     def launch(
         self,
         task: DemoTask,
         *,
         cluster_name: str,
-        idle_minutes_to_autostop: int | None,
+        idle_minutes_to_autostop: Optional[int],
         down: bool,
         dryrun: bool,
     ) -> DemoRequest[LaunchPlan | LaunchResult]:
@@ -331,30 +342,44 @@ class DemoSky(ModuleType):
     def tail_logs(
         self, cluster: str, job_id: int, *, follow: bool, tail: int, preload_content: bool
     ) -> Iterator[str]:
-        return self.simulator.logs()
+        if follow or preload_content:
+            raise ValueError("Demo logs only support finite snapshots")
+        if job_id != 1 or not any(row.name == cluster for row in self.simulator.rows()):
+            return iter(())
+        lines = list(self.simulator.logs())
+        return iter(lines[-tail:] if tail > 0 else [])
 
     def job_status(self, cluster: str, job_ids: Sequence[int]) -> DemoRequest[dict[int, str]]:
-        return DemoRequest({job_id: "RUNNING" for job_id in job_ids})
+        running = any(row.name == cluster and row.status == "UP" for row in self.simulator.rows())
+        return DemoRequest({job_id: "RUNNING" for job_id in job_ids if running and job_id == 1})
 
 
 class DemoSecrets:
     @staticmethod
-    def token_hex(nbytes: int | None = None) -> str:
-        return DEMO_KEY
+    def token_hex(nbytes: Optional[int] = None) -> str:
+        size = len(DEMO_KEY) // 2 if nbytes is None else nbytes
+        if size < 0:
+            raise ValueError("Number of bytes must be nonnegative")
+        return (DEMO_KEY * (size * 2 // len(DEMO_KEY) + 1))[: size * 2]
 
 
 class DemoHttp:
-    RequestException = requests.RequestException
+    RequestException: ClassVar[type[requests.RequestException]] = requests.RequestException
 
     def __init__(self, simulator: Simulator) -> None:
-        self.simulator = simulator
+        self.simulator: Simulator = simulator
 
     def get(self, url: str, *, headers: Mapping[str, str], timeout: float) -> HealthResponse:
+        if timeout <= 0:
+            raise ValueError("Timeout must be positive")
+        authorization = headers.get("Authorization")
+        if authorization is not None and not authorization.startswith("Bearer "):
+            return HealthResponse(401)
         return self.simulator.health(url)
 
 
 def install(
-    state_path: str | Path, scene: str = "up", delay: float = 0.6, patcher: MonkeyPatch | None = None
+    state_path: str | Path, scene: str = "up", delay: float = 0.6, patcher: Optional[MonkeyPatch] = None
 ) -> Simulator:
     """Install fixtures before Click starts its SkyPilot prefetch thread."""
     simulation = Simulator(Path(state_path), scene, delay)
@@ -380,8 +405,8 @@ def main() -> None:
     state = os.environ.get("IWANT_DEMO_STATE")
     if not state:
         raise SystemExit("Use demo/render.sh to run the isolated recording environment.")
-    install(state, scene=os.environ.get("IWANT_DEMO_SCENE", "up"))
-    os.environ.pop("HF_TOKEN", None)
+    _ = install(state, scene=os.environ.get("IWANT_DEMO_SCENE", "up"))
+    _ = os.environ.pop("HF_TOKEN", None)
     original_select = style_prompts()
     output = RecordingOutput(sys.stdout) if sys.stdout.isatty() else sys.stdout
     try:

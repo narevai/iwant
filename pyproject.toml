@@ -12,6 +12,8 @@ dependencies = [
   "skypilot[gcp]>=0.13.0",
   "questionary>=2.0",
   "pyyaml>=6.0",
+  "pydantic>=2.10,<3",
+  "typing-extensions>=4.5",
   "requests>=2.31",
 ]
 
@@ -43,6 +45,4 @@ testpaths = ["tests"]
 
 [tool.basedpyright]
 include = ["iwant", "demo", "tests"]
-typeCheckingMode = "standard"
-strict = ["demo"]
 pythonVersion = "3.9"

@@ -2,26 +2,46 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
-from typing import cast
+from typing import ClassVar, Optional, Union
+
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-def record_field(record: object, name: str) -> object:
-    """Normalize SDK mappings/objects at the external data boundary."""
-    if isinstance(record, Mapping):
-        return cast(Mapping[str, object], record).get(name)
-    return getattr(record, name, None)
+class CloudCheckResult(
+    RootModel[dict[str, Union[dict[str, list[str]], list[str], tuple[str, ...], set[str]]]]
+):
+    """SDK workspace-to-cloud capabilities, including cloud-name sequences."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(strict=True)
+
+    def enabled_clouds(self) -> set[str]:
+        return {cloud.lower() for clouds in self.root.values() for cloud in clouds}
 
 
-def text_field(record: object, name: str, default: str = "-") -> str:
-    value = record_field(record, name)
-    if value is None:
-        return default
-    if isinstance(value, Enum):
-        value = value.value
-    return str(value)
+class EndpointResult(RootModel[dict[int, str]]):
+    """SDK port-to-address response."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(strict=True)
+
+
+class SdkClusterRecord(BaseModel):
+    """Only the SDK response fields consumed by iwant.
+
+    Pydantic reads both response objects and mappings, normalizes string enum
+    values, and ignores SDK metadata which iwant does not consume.
+    """
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True, extra="ignore")
+
+    name: Optional[str] = None
+    status: Optional[str] = None
+    resources_str: Optional[str] = None
+    cloud: Optional[str] = None
+    region: Optional[str] = None
+    autostop: Optional[int] = Field(default=None, strict=True)
+    to_down: bool = Field(default=False, strict=True)
+    launched_at: Optional[float] = Field(default=None, strict=True)
 
 
 @dataclass(frozen=True)
@@ -31,25 +51,24 @@ class ClusterRecord:
     resources_str: str = "-"
     cloud: str = "-"
     region: str = ""
-    autostop: int | None = None
+    autostop: Optional[int] = None
     to_down: bool = False
-    launched_at: float | None = None
+    launched_at: Optional[float] = None
 
     @classmethod
     def from_sdk(cls, record: object) -> "ClusterRecord":
         if isinstance(record, cls):
             return record
-        autostop = record_field(record, "autostop")
-        launched_at = record_field(record, "launched_at")
+        row = SdkClusterRecord.model_validate(record)
         return cls(
-            name=text_field(record, "name", "?"),
-            status=text_field(record, "status", "?"),
-            resources_str=text_field(record, "resources_str"),
-            cloud=text_field(record, "cloud"),
-            region=text_field(record, "region", ""),
-            autostop=autostop if isinstance(autostop, int) else None,
-            to_down=record_field(record, "to_down") is True,
-            launched_at=float(launched_at) if isinstance(launched_at, (int, float)) else None,
+            name=row.name if row.name is not None else "?",
+            status=row.status if row.status is not None else "?",
+            resources_str=row.resources_str if row.resources_str is not None else "-",
+            cloud=row.cloud if row.cloud is not None else "-",
+            region=row.region if row.region is not None else "",
+            autostop=row.autostop,
+            to_down=row.to_down,
+            launched_at=row.launched_at,
         )
 
 
