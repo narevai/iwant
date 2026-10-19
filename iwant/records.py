@@ -51,9 +51,9 @@ class ClusterRecord:
     resources_str: str = "-"
     cloud: str = "-"
     region: str = ""
-    autostop: int | None = None
+    autostop: Optional[int] = None
     to_down: bool = False
-    launched_at: float | None = None
+    launched_at: Optional[float] = None
 
     @classmethod
     def from_sdk(cls, record: object) -> "ClusterRecord":

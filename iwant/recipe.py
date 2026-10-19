@@ -6,7 +6,7 @@ import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, Union
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, SerializationInfo, field_serializer
@@ -19,10 +19,10 @@ class RecipeModel(BaseModel):
 class RecipeResources(RecipeModel):
     infra: Optional[str] = None
     accelerators: Optional[str] = None
-    cpus: Optional[str | int | float] = None
-    memory: Optional[str | int | float] = None
+    cpus: Optional[Union[str, int, float]] = None
+    memory: Optional[Union[str, int, float]] = None
     disk_size: Optional[int] = Field(default=None, gt=0)
-    ports: Optional[list[int | str]] = None
+    ports: Optional[list[Union[int, str]]] = None
     use_spot: Optional[bool] = None
 
 
