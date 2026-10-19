@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, Union
 
 import questionary
 
 from .records import CloudStatus, RunningCluster
 
-SelectChoice = str | questionary.Choice
-SelectDefault = str | questionary.Choice | None
+SelectChoice = Union[str, questionary.Choice]
+SelectDefault = Union[str, questionary.Choice, None]
 
 
 class PromptQuestion(Protocol):

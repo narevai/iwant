@@ -8,7 +8,7 @@ Launch an open model on a cloud GPU. Get an OpenAI-compatible endpoint,<br>
 an API key, and SSH access — all in your own cloud account.
 
 [![CI](https://github.com/narevai/iwant/actions/workflows/ci.yml/badge.svg)](https://github.com/narevai/iwant/actions/workflows/ci.yml)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python 3.9–3.14](https://img.shields.io/badge/python-3.9–3.14-blue)
 
 [Try it](#try-gpt-oss-20b) · [Models](#models) · [Commands](#commands) · [More demos](demo/README.md)
 
@@ -38,7 +38,8 @@ supported cloud.
 ### 1. Install and connect
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
+curl -fsSL https://github.com/narevai/iwant/releases/latest/download/install.sh -o /tmp/iwant-install.sh
+bash /tmp/iwant-install.sh
 
 gcloud config set project YOUR_PROJECT_ID
 gcloud auth login
@@ -55,11 +56,27 @@ It sends an anonymous install event with OS, CPU architecture, and success/failu
 To opt out:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh -o /tmp/iwant-install.sh
+curl -fsSL https://github.com/narevai/iwant/releases/latest/download/install.sh -o /tmp/iwant-install.sh
 IWANT_NO_TELEMETRY=1 bash /tmp/iwant-install.sh
 ```
 
-From source, with Python 3.10+:
+Each release's installer installs that release's Git tag. To install a specific
+version (or roll back), download its installer, for example:
+
+```bash
+curl -fsSL https://github.com/narevai/iwant/releases/download/v0.1.0/install.sh -o /tmp/iwant-install.sh
+bash /tmp/iwant-install.sh
+```
+
+Re-running the latest installer upgrades to the latest release. Local changes in
+the installation checkout must be committed or stashed first. To install a
+development branch instead, pass `--branch main`.
+
+Python 3.15 is currently unsupported: SkyPilot's PuLP 4.0.1 dependency fails
+to build its wheel on Python 3.15 ARM64. Package metadata excludes Python 3.15
+and newer.
+
+From source, with Python 3.9–3.14:
 
 ```bash
 git clone https://github.com/narevai/iwant.git
@@ -153,4 +170,5 @@ Preview with `--dry-run`, skip prompts with `--yes`, choose spot capacity with
 Run `iwant up --help` for all options.
 
 [Advanced usage](docs/usage.md) · [Development](docs/development.md) ·
+[Release guide](docs/releases.md) ·
 [Demo gallery and GIF generation](demo/README.md)
