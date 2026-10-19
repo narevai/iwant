@@ -37,7 +37,7 @@ IWANT_HOME="${IWANT_HOME:-$HOME/.iwant}"
 INSTALL_DIR="${IWANT_INSTALL_DIR:-$IWANT_HOME/iwant}"
 COMMAND_LINK_DIR="$HOME/.local/bin"
 PYTHON_VERSION="3.12"
-PYTHON_SUPPORTED_RANGE=">=3.10,<3.14" # pyproject requires-python; keep in sync
+PYTHON_SUPPORTED_RANGE=">=3.9,<3.14" # SkyPilot supports Python 3.9–3.13
 # Umami website id is public by design (Umami ids are never secret).
 UMAMI_URL="https://api-gateway.umami.dev/api/send"
 UMAMI_WEBSITE_ID="83080a32-0b95-4e90-b948-90929086b256"

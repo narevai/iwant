@@ -14,6 +14,18 @@ checks with `make lint` (Ruff and type checking), `make format-check`, or
 `make test`. Use `make format` to apply formatting. To select an interpreter,
 pass `PYTHON=/path/to/python` to any target, including `install`.
 
+CI installs the full dependency set, runs tests, imports SkyPilot, and checks CLI
+startup on Python 3.9–3.15. Every version is required to pass. SkyPilot currently
+documents Python 3.9–3.13 support, so the newer versions also check compatibility
+beyond its documented range. The installer continues to select Python 3.9–3.13
+until the newer versions are verified with SkyPilot. To check Python 3.9 locally in an isolated environment:
+
+```bash
+uv venv --seed --python 3.9 /tmp/iwant-py39
+make install PYTHON=/tmp/iwant-py39/bin/python
+make check PYTHON=/tmp/iwant-py39/bin/python
+```
+
 ### Generate the GIFs
 
 The README banner types `iwant up MODEL` and cycles through all model arguments
