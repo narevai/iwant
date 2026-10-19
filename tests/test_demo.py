@@ -10,9 +10,10 @@ from typing import NoReturn, Optional, Protocol
 import pytest
 import requests
 from click.testing import CliRunner
+from pydantic import ValidationError
 
 from demo import chat_fixture, simulator
-from demo.records import DemoRequest, DemoTask, LaunchPlan, LaunchResult, Resources
+from demo.records import DemoRequest, DemoState, DemoTask, LaunchPlan, LaunchResult, Resources
 from iwant import cli, registry
 from iwant.records import ClusterRecord
 
@@ -222,7 +223,7 @@ def test_demo_request_results_keep_their_domain_types(demo: DemoFactory) -> None
 def test_invalid_yaml_resource_type_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "invalid.yaml"
     _ = path.write_text("envs: {}\nresources:\n  accelerators: [L4]\n")
-    with pytest.raises(ValueError, match="Expected a string for accelerators"):
+    with pytest.raises(ValidationError, match="resources.accelerators"):
         _ = DemoTask.from_yaml(path)
 
 
@@ -239,6 +240,7 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
     request = {
         "model": "openai/gpt-oss-20b",
         "messages": [{"role": "user", "content": "Write a haiku about GPUs."}],
+        "max_tokens": 256,
     }
     assert chat_fixture.completion(request, fixture.state_path)[0] == 503
     runner = CliRunner()
@@ -246,6 +248,7 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
     assert result.exit_code == 0, result.output
     status, response = chat_fixture.completion(request, fixture.state_path)
     assert status == 200
+    assert "choices" in response
     assert response["choices"] == [
         {"message": {"role": "assistant", "content": chat_fixture.ANSWER}, "finish_reason": "stop"}
     ]
@@ -261,3 +264,53 @@ def test_chat_fixture_requires_launch_and_stops_after_teardown(demo: DemoFactory
 def test_chat_fixture_rejects_requests_outside_recorded_demo(body: object, demo: DemoFactory) -> None:
     fixture = demo("quickstart")
     assert chat_fixture.completion(body, fixture.state_path)[0] == 400
+
+
+def test_demo_submission_preserves_autostop_without_teardown(demo: DemoFactory) -> None:
+    fixture = demo()
+    task = DemoTask("gpt-oss-20b@v1", Resources("gcp", "L4:1"))
+    _ = fixture.submit(task, fixture.cluster_name("gpt-oss-20b", 1), 30, False, False)
+    row = fixture.rows()[0]
+    assert row.autostop == 30
+    assert row.to_down is False
+
+
+def test_demo_cloud_check_filters_requested_clouds(demo: DemoFactory) -> None:
+    fixture = demo()
+    check = simulator.DemoCloudCheck(fixture)
+    assert check.check(["aws"], quiet=True) == {"demo": {}}
+    assert check.check(["GCP"], quiet=True) == {"demo": {"gcp": []}}
+
+
+def test_demo_endpoints_require_a_running_cluster_and_server_port(demo: DemoFactory) -> None:
+    fixture = demo("list")
+    name = fixture.rows()[0].name
+    assert fixture.endpoints(name, 8000) == {8000: "192.0.2.10:8000"}
+    assert fixture.endpoints(name, 9000) == {}
+    assert fixture.endpoints("missing-cluster", 8000) == {}
+
+
+def test_demo_logs_and_job_status_require_a_matching_job(demo: DemoFactory) -> None:
+    fixture = demo("list")
+    sky = simulator.DemoSky(fixture)
+    name = fixture.rows()[0].name
+    assert list(sky.tail_logs(name, 1, follow=False, tail=5, preload_content=False))
+    assert list(sky.tail_logs(name, 1, follow=False, tail=0, preload_content=False)) == []
+    assert list(sky.tail_logs(name, 2, follow=False, tail=5, preload_content=False)) == []
+    assert sky.get(sky.job_status(name, [1, 2])) == {1: "RUNNING"}
+    assert sky.get(sky.job_status("missing-cluster", [1])) == {}
+
+
+@pytest.mark.parametrize("nbytes", [0, 1, 24, 32])
+def test_demo_token_source_preserves_requested_length(nbytes: int) -> None:
+    token = simulator.DemoSecrets.token_hex(nbytes)
+    assert len(token) == nbytes * 2
+    assert all(character in "0123456789abcdef" for character in token)
+
+
+@pytest.mark.parametrize("content", ["{}", '[{"name": 123, "status": "UP"}]'])
+def test_demo_state_rejects_invalid_json_shape(tmp_path: Path, content: str) -> None:
+    path = tmp_path / "state.json"
+    _ = path.write_text(content)
+    with pytest.raises(ValidationError):
+        _ = DemoState.read(path)
