@@ -13,6 +13,7 @@ from . import infra as infra_mod
 from . import sky_wrap, tui
 from .recipe import Recipe
 from .registry import list_models, new_cluster_name, resolve_task_yaml
+from .sky_api import submit_launch
 from .spinner import Spinner
 
 if TYPE_CHECKING:
@@ -160,8 +161,6 @@ def _job_terminal_status(cluster: str, job_id: int | None) -> str | None:
         statuses = sky.get(sky.job_status(cluster, job_ids=[job_id]))
     except Exception:
         return None
-    if not isinstance(statuses, dict):
-        return None
     status = statuses.get(job_id)
     if status is None:
         return None
@@ -222,7 +221,8 @@ def _run_launch(
 
     try:
         with Spinner("Submitting launch request..."):
-            request_id = sky.launch(
+            request_id = submit_launch(
+                sky,
                 task,
                 cluster_name=cluster,
                 idle_minutes_to_autostop=idle_minutes,
@@ -256,7 +256,7 @@ def _run_launch(
     else:
         print(
             "Launch submitted, streaming logs (Ctrl+C to stop watching - "
-            "the job keeps running remotely either way; pass --quiet to hide this)..."
+            + "the job keeps running remotely either way; pass --quiet to hide this)..."
         )
         try:
             job_id, handle = sky.stream_and_get(request_id)
@@ -279,7 +279,7 @@ def _run_launch(
         except KeyboardInterrupt:
             print(
                 f"\nStopped waiting after {_format_duration(time.monotonic() - start)} - "
-                f"the job keeps running remotely. Check `iwant ssh {cluster}` or `iwant list`."
+                + f"the job keeps running remotely. Check `iwant ssh {cluster}` or `iwant list`."
             )
             return 1
         if healthy:
@@ -294,14 +294,14 @@ def _run_launch(
         if job_status:
             print(
                 f"The server job ended ({job_status}) after {_format_duration(elapsed)} - "
-                f"see `sky logs {cluster} {job_id}`. The cluster is still up (and billing): "
-                f"`iwant down {cluster}` when done."
+                + f"see `sky logs {cluster} {job_id}`. The cluster is still up (and billing): "
+                + f"`iwant down {cluster}` when done."
             )
             return 1
         print(
             f"Port is up (http://{ep}/v1) but the server isn't responding yet after "
-            f"{_format_duration(elapsed)} - it may still be loading the model. "
-            f"Check `iwant ssh {cluster}` or `iwant list`."
+            + f"{_format_duration(elapsed)} - it may still be loading the model. "
+            + f"Check `iwant ssh {cluster}` or `iwant list`."
         )
         return 1
 

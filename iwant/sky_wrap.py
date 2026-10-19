@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import time
 
-from .records import ClusterRecord, RunningCluster
+from .records import ClusterRecord, EndpointResult, RunningCluster
 from .spinner import Spinner
 
 
@@ -29,10 +29,10 @@ def _iwant_rows(spinner_message: str) -> list[ClusterRecord] | None:
     try:
         with Spinner(spinner_message):
             rows = sky.get(sky.status())
+        records = [ClusterRecord.from_sdk(row) for row in rows or []]
     except Exception as e:
         print(f"sky.status() failed: {e}")
         return None
-    records = [ClusterRecord.from_sdk(row) for row in rows or []]
     return [row for row in records if row.name.startswith("iwant-")]
 
 
@@ -129,10 +129,8 @@ def endpoint(cluster: str) -> str | None:
     import sky  # lazy: slow to import, see cli._prefetch_sky()
 
     try:
-        result = sky.get(sky.endpoints(cluster, port=8000))
+        result = EndpointResult.model_validate(sky.get(sky.endpoints(cluster, port=8000)))
     except Exception:
         return None
     # Expect {port: "ip:port"}; anything else, or another port, isn't the vLLM server.
-    if isinstance(result, dict):
-        return result.get(8000)
-    return None
+    return result.root.get(8000)

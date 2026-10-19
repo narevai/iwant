@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import sys
 import threading
+from typing import ClassVar
 
 import click
+from typing_extensions import override
 
 from . import infra as infra_mod
 from . import launch as launch_mod
@@ -18,7 +21,7 @@ def _prefetch_sky() -> None:
     most of that cost behind the interactive pickers. A later `import sky`
     elsewhere just waits for this one to finish."""
     try:
-        import sky  # noqa: F401
+        _ = importlib.import_module("sky")
     except Exception:
         pass  # imported again, with error handling, where it's used
 
@@ -26,11 +29,13 @@ def _prefetch_sky() -> None:
 class _SectionedGroup(click.Group):
     """Lists commands in a fixed order, in blank-line-separated sections."""
 
-    SECTIONS = (("up", "down"), ("auth",), ("list", "ssh"))
+    SECTIONS: ClassVar[tuple[tuple[str, ...], ...]] = (("up", "down"), ("auth",), ("list", "ssh"))
 
+    @override
     def list_commands(self, ctx: click.Context) -> list[str]:
         return [name for section in self.SECTIONS for name in section]
 
+    @override
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         width = max(len(name) for name in self.list_commands(ctx))
         with formatter.section("Commands"):
@@ -105,15 +110,15 @@ def _resolve_or_pick(cluster: str | None, action: str, statuses: set[str] | None
     default=None,
     envvar="HF_TOKEN",
     help="Sets HF_TOKEN in the launched instance's environment - for gated models "
-    "or faster/authenticated HuggingFace downloads. Also reads the HF_TOKEN env var.",
+    + "or faster/authenticated HuggingFace downloads. Also reads the HF_TOKEN env var.",
 )
 @click.option(
     "--idle-minutes",
     type=int,
     default=None,
-    help=f"Autostop+teardown the cluster after this many idle minutes "
-    f"(default {launch_mod.DEFAULT_IDLE_MINUTES}). Omit this and "
-    "--no-autostop to pick interactively.",
+    help="Autostop+teardown the cluster after this many idle minutes "
+    + f"(default {launch_mod.DEFAULT_IDLE_MINUTES}). Omit this and "
+    + "--no-autostop to pick interactively.",
 )
 @click.option(
     "--no-autostop",

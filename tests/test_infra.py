@@ -20,6 +20,7 @@ def test_compute_clouds_are_lowercase_and_unique():
 
 def test_fetch_enabled_parses_check_result(monkeypatch):
     fake_sky = MagicMock()
+    fake_sky.check = MagicMock()
     fake_sky.check.check.return_value = {"default": {"gcp": ["compute", "storage"]}}
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
 
@@ -28,6 +29,7 @@ def test_fetch_enabled_parses_check_result(monkeypatch):
 
 def test_fetch_enabled_none_on_exception(monkeypatch):
     fake_sky = MagicMock()
+    fake_sky.check = MagicMock()
     fake_sky.check.check.side_effect = RuntimeError("boom")
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
 
@@ -36,6 +38,7 @@ def test_fetch_enabled_none_on_exception(monkeypatch):
 
 def test_fetch_enabled_none_on_unexpected_shape(monkeypatch):
     fake_sky = MagicMock()
+    fake_sky.check = MagicMock()
     fake_sky.check.check.return_value = "not a dict"
     monkeypatch.setitem(sys.modules, "sky", fake_sky)
 
