@@ -23,7 +23,7 @@ dev = [
   "ruff>=0.6",
   "basedpyright>=1.39.10,<1.40; python_version < '3.10'",
   "basedpyright>=1.40.2,<2; python_version >= '3.10'",
-  "types-PyYAML>=6.0",
+  "types-PyYAML>=6.0.12.20260906",
   "types-requests>=2.31",
 ]
 
