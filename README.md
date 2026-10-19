@@ -8,7 +8,7 @@ Launch an open model on a cloud GPU. Get an OpenAI-compatible endpoint,<br>
 an API key, and SSH access — all in your own cloud account.
 
 [![CI](https://github.com/narevai/iwant/actions/workflows/ci.yml/badge.svg)](https://github.com/narevai/iwant/actions/workflows/ci.yml)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Python 3.9–3.14](https://img.shields.io/badge/python-3.9–3.14-blue)
 
 [Try it](#try-gpt-oss-20b) · [Models](#models) · [Commands](#commands) · [More demos](demo/README.md)
 
@@ -72,7 +72,11 @@ Re-running the latest installer upgrades to the latest release. Local changes in
 the installation checkout must be committed or stashed first. To install a
 development branch instead, pass `--branch main`.
 
-From source, with Python 3.9+:
+Python 3.15 is currently unsupported: SkyPilot's PuLP 4.0.1 dependency fails
+to build its wheel on Python 3.15 ARM64. Package metadata excludes Python 3.15
+and newer.
+
+From source, with Python 3.9–3.14:
 
 ```bash
 git clone https://github.com/narevai/iwant.git

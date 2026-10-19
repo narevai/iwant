@@ -15,10 +15,13 @@ checks with `make lint` (Ruff and type checking), `make format-check`, or
 pass `PYTHON=/path/to/python` to any target, including `install`.
 
 CI installs the full dependency set, runs tests, imports SkyPilot, and checks CLI
-startup on Python 3.9–3.15. Every version is required to pass. SkyPilot currently
-documents Python 3.9–3.13 support, so the newer versions also check compatibility
-beyond its documented range. The installer continues to select Python 3.9–3.13
-until the newer versions are verified with SkyPilot. To check Python 3.9 locally in an isolated environment:
+startup on Python 3.9–3.14. Every version is required to pass. Python 3.15 is
+excluded from CI and package metadata because SkyPilot's PuLP 4.0.1 dependency
+fails during wheel packaging on Python 3.15 ARM64 (`Large file option has not
+been set`). Revisit the upper bound when the upstream build issue is resolved.
+
+The installer continues to select Python 3.9–3.13, matching SkyPilot's documented
+range. To check Python 3.9 locally in an isolated environment:
 
 ```bash
 uv venv --seed --python 3.9 /tmp/iwant-py39
