@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iwant"
-version = "0.1.0"
-description = "CLI over SkyPilot's Python SDK for launching vLLM model servers"
+version = "0.2.0"
+description = "CLI for launching open-weight models on bare-metal GPU servers"
 requires-python = ">=3.9,<3.15"
 dependencies = [
   "click>=8.0,<8.2.0",
