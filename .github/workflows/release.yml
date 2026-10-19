@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read version and release notes
+        id: metadata
+        run: |
+          version=$(python scripts/release_notes.py --output "$RUNNER_TEMP/release-notes.md")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version"; then
+            echo "Release tag v$version already exists. Bump project.version before releasing."
+            exit 1
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
+      - name: Install development dependencies
+        run: make install-dev
+      - name: Check release
+        run: make check
+      - name: Prepare versioned installer
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          sed "s/^RELEASE_TAG=\"\"$/RELEASE_TAG=\"v$RELEASE_VERSION\"/" install.sh > "$RUNNER_TEMP/install.sh"
+          bash -n "$RUNNER_TEMP/install.sh"
+          bash "$RUNNER_TEMP/install.sh" --help
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          gh release create "v$RELEASE_VERSION" "$RUNNER_TEMP/install.sh" \
+            --target "$GITHUB_SHA" \
+            --title "iwant $RELEASE_VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest

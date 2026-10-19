@@ -41,6 +41,7 @@ class _SectionedGroup(click.Group):
 
 
 @click.group(cls=_SectionedGroup)
+@click.version_option(package_name="iwant")
 def main() -> None:
     """iwant - launch vLLM model servers on cloud GPUs."""
     ensure_cloud_env()
