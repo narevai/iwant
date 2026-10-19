@@ -5,7 +5,7 @@ UV ?= uv
 .PHONY: install-dev check lint format-check format types test
 
 install-dev:
-	$(UV) pip install --python "$(PYTHON)" -e '.[dev]'
+	$(UV) pip install --system --python "$(PYTHON)" -e '.[dev]'
 
 check: lint format-check types test
 
