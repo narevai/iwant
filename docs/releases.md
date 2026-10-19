@@ -1,8 +1,8 @@
 # Releasing iwant
 
-Releases are published manually from `main`. Each GitHub Release contains an
-installer pinned to its Git tag, so users can install or roll back to a specific
-version. Merging a change does not publish a release.
+Releases batch merged changes once daily at **00:00 UTC**. Each
+GitHub Release contains an installer pinned to its Git tag, so users can install
+or roll back to a specific version. Manual publication remains available.
 
 ## How the pieces connect
 
@@ -17,25 +17,59 @@ version. Merging a change does not publish a release.
   sets its `RELEASE_TAG` to the published tag and attaches that copy to the
   release. The repository template defaults to `main`.
 
-## Prepare and publish
+## Automation setup
 
-1. Set `project.version` in `pyproject.toml` to an unused stable version such as
-   `0.1.0`. Use `X.Y.Z` format. Increase the version for each subsequent release.
-2. Validate locally from the repository root:
+Complete the [Renovate and branch protection setup](development.md#one-time-github-setup).
+In **Settings → Actions → General → Workflow permissions**, enable **Allow
+GitHub Actions to create and approve pull requests**. The release workflow
+requests permissions to create and merge version PRs, dispatch CI, read checks,
+and publish releases using GitHub's built-in `GITHUB_TOKEN`. No extra token or
+secret is needed. Organization policies must allow these permissions.
 
-   ```bash
-   make install
-   make check
-   ```
+Require **CI passed** and up-to-date branches on `main`. Required human approvals
+will block unattended version PR merges; do not bypass required CI checks.
 
-3. Commit the changes and merge them into `main`. The release workflow itself
-   must also be merged before it can be triggered.
-4. Open [GitHub Actions → Release](https://github.com/narevai/iwant/actions/workflows/release.yml).
-   Select **Run workflow**, choose `main`, and click **Run workflow**.
-5. Open the new workflow run and wait for it to finish successfully.
+## Version policy and daily publication
 
-The release job skips runs selected on a branch other than `main`. Only one
-release job runs at a time.
+`project.version` in `pyproject.toml` is the **only source of the version**.
+The daily workflow reads it and commits a patch bump back to that file through
+a PR. GitHub tags label published versions; the workflow does not derive the
+package version from Git tags or install different versions than the metadata.
+
+1. Dependency updates and other changes merge throughout the day.
+2. At **00:00 UTC**, the workflow checks `main` and its CI results.
+3. If the declared version was published and new commits have merged, it opens
+   one PR bumping `project.version`, for example `0.2.0` to `0.2.1`. If that
+   version PR is already open, it rebases it. `release/vX.Y.Z` branches are
+   reserved for automation. Without new changes, it skips.
+4. The workflow explicitly dispatches the full CI workflow on the version
+   branch. After success, it merges only the bot-authored PR whose head exactly
+   matches the tested commit. GitHub still enforces branch protection.
+5. It explicitly dispatches CI on `main` after merging. After that succeeds,
+   the release workflow publishes the version now committed in `pyproject.toml`.
+   Ordinary dependency merges do not start another release or bump.
+6. An initial or manually bumped unused version is published directly by the
+   daily run only after successful CI on that exact main commit.
+
+Explicit `workflow_dispatch` calls can start CI with the built-in token without
+relying on approval of automatically generated PR runs. See
+[GitHub's token event behavior](https://docs.github.com/en/actions/concepts/security/github_token).
+No one needs to remember daily version bumps. You can still set an appropriate
+minor version in a feature PR; routine daily bumps increment the patch.
+
+GitHub may delay scheduled runs and CI takes time, so publication is after the
+requested midnight start. Failed checks or merge conflicts stop the pipeline.
+If `main` moves ahead, the next nightly run retries or includes the newer changes.
+Existing releases are checked for their installer; incomplete releases require
+manual investigation. Version commits go through PRs rather than direct pushes.
+
+## Manual publication
+
+To start a batch before the nightly run, open
+[GitHub Actions → Release](https://github.com/narevai/iwant/actions/workflows/release.yml),
+select **Run workflow**, choose `main`, and run it. The same version bump, CI,
+merge, and publication steps apply. Only one release job runs at a time;
+selecting another branch skips the job.
 
 ## What the release command does
 
@@ -92,7 +126,7 @@ make release
 
 Open the failed workflow step and fix the reported error. Check or installer
 validation failures stop publication. An existing tag requires a new version
-for a normal subsequent release.
+in `pyproject.toml` for a subsequent release.
 
 If failure occurs during publication, inspect both the Git tag and GitHub Release
 before retrying: publication can leave partial state behind. A rerun rejects an

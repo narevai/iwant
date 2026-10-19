@@ -1,10 +1,14 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -45,3 +49,24 @@ jobs:
       - run: make test
       - run: python -c "import sky; import iwant.cli"
       - run: iwant --help
+
+  ci-passed:
+    name: CI passed
+    if: ${{ always() }}
+    needs: [lint, format, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import sys
+
+          results = json.loads(os.environ["RESULTS"])
+          failed = [name for name, job in results.items() if job["result"] != "success"]
+          if failed:
+              sys.exit("CI jobs did not succeed: " + ", ".join(failed))
+          PYTHON
