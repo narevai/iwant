@@ -56,6 +56,23 @@ def test_demo_launch_uses_real_recipe_and_cli(model: str, demo: DemoFactory) -> 
     assert sky.simulator is fixture
 
 
+@pytest.mark.parametrize("supplied_key", [None, "user-supplied-api-key"])
+def test_launch_prints_plaintext_api_key_but_not_hf_token(
+    demo: DemoFactory, supplied_key: str | None
+) -> None:
+    _ = demo()
+    hf_token = "private-huggingface-token"
+    args = ["up", "gpt-oss-20b", "--yes", "--infra", "gcp", "--hf-token", hf_token]
+    if supplied_key is not None:
+        args.extend(["--api-key", supplied_key])
+    result = CliRunner().invoke(cli.main, args)
+    assert result.exit_code == 0, result.output
+    expected_key = supplied_key if supplied_key is not None else simulator.DEMO_KEY
+    assert f"API key (save this now): {expected_key}" in result.output
+    assert f"API key: {expected_key}" in result.output
+    assert hf_token not in result.output
+
+
 def test_demo_dry_run_does_not_create_cluster(demo: DemoFactory) -> None:
     fixture = demo()
     result = CliRunner().invoke(cli.main, ["up", "gpt-oss-20b", "--dry-run", "--yes"])

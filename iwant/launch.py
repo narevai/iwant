@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import os
 import secrets
 import sys
-import tempfile
 import time
 from enum import Enum, auto
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests
-import yaml
+from pydantic import SecretStr
 
 from . import infra as infra_mod
 from . import sky_wrap, tui
+from .recipe import Recipe
 from .registry import list_models, new_cluster_name, resolve_task_yaml
 from .spinner import Spinner
 
@@ -40,37 +38,6 @@ class Cancelled(Enum):
 
 
 _CANCELLED = Cancelled.VALUE
-
-
-def _materialize_task_yaml(
-    source_path: str | Path,
-    infra: str | None,
-    api_key: str | None,
-    use_spot: bool,
-    hf_token: str | None = None,
-    recipe: str | None = None,
-) -> str:
-    """Path to the recipe with CLI overrides applied: a temp copy if there
-    is anything to override (the caller deletes it), else the recipe itself."""
-    if infra is None and api_key is None and not use_spot and hf_token is None and recipe is None:
-        return str(source_path)
-    with open(source_path) as f:
-        data = yaml.safe_load(f) or {}
-    if infra:
-        data.setdefault("resources", {})["infra"] = infra
-    if api_key:
-        data.setdefault("envs", {})["VLLM_API_KEY"] = api_key
-    if hf_token:
-        data.setdefault("envs", {})["HF_TOKEN"] = hf_token
-    if use_spot:
-        data.setdefault("resources", {})["use_spot"] = True
-    if recipe:
-        # Stays on the cluster too (`echo $IWANT_RECIPE` over ssh).
-        data.setdefault("envs", {})["IWANT_RECIPE"] = recipe
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", prefix="iwant-task-", delete=False)
-    yaml.safe_dump(data, tmp)
-    tmp.close()
-    return tmp.name
 
 
 def _resolve_autostop(
@@ -386,17 +353,17 @@ def launch(
     dry_run = dry_run_value
 
     key = None if dry_run else (api_key or secrets.token_hex(24))
-    task_path = _materialize_task_yaml(
-        task_yaml, infra=chosen_infra, api_key=key, use_spot=use_spot, hf_token=hf_token, recipe=recipe
+    document = Recipe.from_yaml(task_yaml).with_overrides(
+        infra=chosen_infra,
+        api_key=SecretStr(key) if key is not None else None,
+        use_spot=use_spot,
+        hf_token=SecretStr(hf_token) if hf_token is not None else None,
+        recipe_id=recipe,
     )
     import sky  # lazy: slow to import, see cli._prefetch_sky()
 
-    try:
-        task = sky.Task.from_yaml(task_path)
-    finally:
-        # Delete the temp copy (it holds the API key), never the recipe itself.
-        if task_path != str(task_yaml):
-            os.unlink(task_path)
+    with document.materialize() as task_path:
+        task = sky.Task.from_yaml(str(task_path))
 
     if key:
         print()
