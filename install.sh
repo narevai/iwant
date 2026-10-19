@@ -5,7 +5,8 @@
 # Installation script for Linux and macOS.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
+#   curl -fsSL https://github.com/narevai/iwant/releases/latest/download/install.sh -o /tmp/iwant-install.sh
+#   bash /tmp/iwant-install.sh
 #
 # Or with options:
 #   curl -fsSL ... | bash -s -- --branch dev --skip-auth
@@ -44,6 +45,8 @@ UMAMI_WEBSITE_ID="83080a32-0b95-4e90-b948-90929086b256"
 # Options
 RUN_SETUP=true
 BRANCH="main"
+# The release workflow pins this value in the published installer asset.
+RELEASE_TAG=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -53,6 +56,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --branch)
             BRANCH="$2"
+            RELEASE_TAG=""
             shift 2
             ;;
         --dir)
@@ -66,7 +70,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --skip-auth    Don't run 'iwant auth' after installing"
-            echo "  --branch NAME  Git branch to install (default: main)"
+            echo "  --branch NAME  Install a development branch instead of ${RELEASE_TAG:-main}"
             echo "  --dir PATH     Installation directory (default: ~/.iwant/iwant)"
             echo "  -h, --help     Show this help"
             exit 0
@@ -269,6 +273,7 @@ check_cloud_tools() {
 # ============================================================================
 
 clone_repo() {
+    local ref="${RELEASE_TAG:-$BRANCH}"
     log_info "Installing to $INSTALL_DIR..."
 
     if [ -d "$INSTALL_DIR/.git" ]; then
@@ -278,11 +283,20 @@ clone_repo() {
             log_error "Local changes in $INSTALL_DIR - commit/stash them or remove the directory, then re-run."
             exit 1
         fi
-        git fetch origin "$BRANCH"
-        git checkout "$BRANCH"
-        if ! git pull --ff-only origin "$BRANCH"; then
-            log_error "Can't fast-forward $INSTALL_DIR to origin/$BRANCH - remove the directory and re-run."
-            exit 1
+        if [ -n "$RELEASE_TAG" ]; then
+            git fetch origin "refs/tags/$RELEASE_TAG"
+            git checkout --detach FETCH_HEAD
+        else
+            git fetch origin "$BRANCH"
+            if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+                git checkout "$BRANCH"
+            else
+                git checkout -b "$BRANCH" FETCH_HEAD
+            fi
+            if ! git pull --ff-only origin "$BRANCH"; then
+                log_error "Can't fast-forward $INSTALL_DIR to origin/$BRANCH - remove the directory and re-run."
+                exit 1
+            fi
         fi
     elif [ -e "$INSTALL_DIR" ]; then
         log_error "Directory exists but is not a git repository: $INSTALL_DIR"
@@ -293,11 +307,11 @@ clone_repo() {
         # SSH first (works for private access), fail fast instead of
         # prompting when no key is set up, then fall back to HTTPS.
         if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
-           git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
+           git clone --depth 1 --branch "$ref" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
             log_success "Cloned via SSH"
         else
             rm -rf "$INSTALL_DIR"
-            if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+            if ! git clone --depth 1 --branch "$ref" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
                 log_error "Failed to clone $REPO_URL_HTTPS"
                 exit 1
             fi
@@ -306,7 +320,7 @@ clone_repo() {
     fi
 
     cd "$INSTALL_DIR"
-    log_success "Repository ready"
+    log_success "Repository ready ($ref)"
 }
 
 setup_venv() {
@@ -475,4 +489,6 @@ main() {
     print_success
 }
 
-main
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+    main
+fi

@@ -38,7 +38,8 @@ supported cloud.
 ### 1. Install and connect
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh | bash
+curl -fsSL https://github.com/narevai/iwant/releases/latest/download/install.sh -o /tmp/iwant-install.sh
+bash /tmp/iwant-install.sh
 
 gcloud config set project YOUR_PROJECT_ID
 gcloud auth login
@@ -55,9 +56,21 @@ It sends an anonymous install event with OS, CPU architecture, and success/failu
 To opt out:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/narevai/iwant/main/install.sh -o /tmp/iwant-install.sh
+curl -fsSL https://github.com/narevai/iwant/releases/latest/download/install.sh -o /tmp/iwant-install.sh
 IWANT_NO_TELEMETRY=1 bash /tmp/iwant-install.sh
 ```
+
+Each release's installer installs that release's Git tag. To install a specific
+version (or roll back), download its installer, for example:
+
+```bash
+curl -fsSL https://github.com/narevai/iwant/releases/download/v0.1.0/install.sh -o /tmp/iwant-install.sh
+bash /tmp/iwant-install.sh
+```
+
+Re-running the latest installer upgrades to the latest release. Local changes in
+the installation checkout must be committed or stashed first. To install a
+development branch instead, pass `--branch main`.
 
 From source, with Python 3.10+:
 
@@ -153,4 +166,5 @@ Preview with `--dry-run`, skip prompts with `--yes`, choose spot capacity with
 Run `iwant up --help` for all options.
 
 [Advanced usage](docs/usage.md) · [Development](docs/development.md) ·
+[Release guide](docs/releases.md) ·
 [Demo gallery and GIF generation](demo/README.md)
