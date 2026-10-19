@@ -5,7 +5,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import NoReturn, Protocol
+from typing import NoReturn, Optional, Protocol
 
 import pytest
 import requests
@@ -58,7 +58,7 @@ def test_demo_launch_uses_real_recipe_and_cli(model: str, demo: DemoFactory) -> 
 
 @pytest.mark.parametrize("supplied_key", [None, "user-supplied-api-key"])
 def test_launch_prints_plaintext_api_key_but_not_hf_token(
-    demo: DemoFactory, supplied_key: str | None
+    demo: DemoFactory, supplied_key: Optional[str]
 ) -> None:
     _ = demo()
     hf_token = "private-huggingface-token"
