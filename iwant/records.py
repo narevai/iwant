@@ -1,5 +1,7 @@
 """Typed records shared by cloud adapters and CLI presentation."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum

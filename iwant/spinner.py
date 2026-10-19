@@ -1,5 +1,7 @@
 """Minimal terminal spinner, shown while waiting on a blocking SDK call."""
 
+from __future__ import annotations
+
 import itertools
 import sys
 import threading
