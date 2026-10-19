@@ -23,7 +23,7 @@ class DemoFactory(Protocol):
 
 @pytest.fixture
 def demo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> DemoFactory:
-    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+    def forbidden(*_args: object, **_kwargs: object) -> NoReturn:
         raise AssertionError("The recording attempted external I/O")
 
     monkeypatch.setattr(subprocess, "run", forbidden)
@@ -88,7 +88,7 @@ def test_demo_dry_run_does_not_create_cluster(demo: DemoFactory) -> None:
     "scene,expected", [("auth", "gcp: enabled"), ("auth-unconfigured", "gcloud auth login")]
 )
 def test_demo_auth(scene: str, expected: str, demo: DemoFactory) -> None:
-    demo(scene)
+    _ = demo(scene)
     result = CliRunner().invoke(cli.main, ["auth"])
     assert result.exit_code == 0, result.output
     assert expected in result.output
@@ -122,7 +122,7 @@ def test_demo_down_persists_between_commands(demo: DemoFactory) -> None:
     assert result.exit_code == 0, result.output
     assert f"Torn down {cluster}" in result.output
     # A second process opens the same session state without reseeding it.
-    simulator.Simulator(fixture.state_path, "down", delay=0)
+    _ = simulator.Simulator(fixture.state_path, "down", delay=0)
     result = CliRunner().invoke(cli.main, ["list"])
     assert result.exit_code == 0, result.output
     assert "No clusters found." in result.output
@@ -140,8 +140,15 @@ def test_demo_entrypoint_hides_scaffolding_and_clears_hf_token(
     fixture = demo()
     monkeypatch.setenv("IWANT_DEMO_STATE", str(fixture.state_path))
     monkeypatch.setenv("HF_TOKEN", "private-test-token")
-    monkeypatch.setattr(simulator, "install", lambda *args, **kwargs: fixture)
-    monkeypatch.setattr(cli, "main", lambda **kwargs: None)
+
+    def installed_fixture(*_args: object, **_kwargs: object) -> simulator.Simulator:
+        return fixture
+
+    def command(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(simulator, "install", installed_fixture)
+    monkeypatch.setattr(cli, "main", command)
     simulator.main()
     output = capsys.readouterr().out
     assert "iwant" in output
@@ -156,8 +163,8 @@ def test_recording_status_preserves_details_in_readable_lines(demo: DemoFactory)
     stream = io.StringIO()
     styled = simulator.RecordingOutput(stream)
     for line in result.output.splitlines():
-        styled.write(line)
-        styled.write("\n")
+        _ = styled.write(line)
+        _ = styled.write("\n")
     output = re.sub(r"\x1b\[[0-9;]*m", "", stream.getvalue())
     assert "Active deployments" in output
     for row in fixture.rows():
@@ -169,13 +176,13 @@ def test_recording_status_preserves_details_in_readable_lines(demo: DemoFactory)
 
 
 def test_recording_launch_keeps_endpoint_and_recipe_on_result_screen(demo: DemoFactory) -> None:
-    demo()
+    _ = demo()
     result = CliRunner().invoke(cli.main, ["up", "step-3.7-flash-optimized", "--yes", "--infra", "gcp"])
     stream = io.StringIO()
     output = simulator.RecordingOutput(stream)
     for line in result.output.splitlines():
-        output.write(line)
-        output.write("\n")
+        _ = output.write(line)
+        _ = output.write("\n")
     rendered = re.sub(r"\x1b\[[0-9;]*m", "", stream.getvalue()).split("\033[2J\033[H")[-1]
     assert "Model ready" in rendered
     assert "Endpoint\nhttp://192.0.2.10:8000/v1" in rendered
@@ -205,7 +212,7 @@ def test_demo_request_results_keep_their_domain_types(demo: DemoFactory) -> None
     assert isinstance(plan, LaunchPlan)
     assert plan.resources.accelerators == "L4:1"
     with pytest.raises(TypeError, match="Only a model launch"):
-        sky.stream_and_get(request)
+        _ = sky.stream_and_get(request)
     launch_request = fixture.submit(task, fixture.cluster_name("gpt-oss-20b", 1), 30, True, False)
     launched = sky.stream_and_get(launch_request)
     assert isinstance(launched, LaunchResult)
@@ -214,9 +221,9 @@ def test_demo_request_results_keep_their_domain_types(demo: DemoFactory) -> None
 
 def test_invalid_yaml_resource_type_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "invalid.yaml"
-    path.write_text("envs: {}\nresources:\n  accelerators: [L4]\n")
+    _ = path.write_text("envs: {}\nresources:\n  accelerators: [L4]\n")
     with pytest.raises(ValueError, match="Expected a string for accelerators"):
-        DemoTask.from_yaml(path)
+        _ = DemoTask.from_yaml(path)
 
 
 def test_output_write_reports_consumed_input_length() -> None:
