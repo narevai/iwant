@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iwant"
-version = "0.2.1"
+version = "0.2.2"
 description = "CLI for launching open-weight models on bare-metal GPU servers"
 requires-python = ">=3.9,<3.15"
 dependencies = [
