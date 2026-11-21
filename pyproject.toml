@@ -24,7 +24,7 @@ dev = [
   "basedpyright>=1.39.10,<1.40; python_version < '3.10'",
   "basedpyright>=1.40.2,<2; python_version >= '3.10'",
   "types-PyYAML>=6.0",
-  "types-requests>=2.31",
+  "types-requests>=2.33.0.20261030",
 ]
 
 [project.scripts]
